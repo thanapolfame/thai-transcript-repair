@@ -167,7 +167,14 @@ and the correct form is left untouched. A row that only passes via the override
 tier is a signal that tier 2 has a gap.
 
 ```bash
-.venv/bin/python -m pytest tests -q
+.venv/bin/python -m pytest -q
+```
+
+The code is annotated throughout and checked under `mypy --strict`, configured
+in `pyproject.toml`. Both gates have to be green:
+
+```bash
+.venv/bin/python -m mypy
 ```
 
 ## Not done here

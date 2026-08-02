@@ -10,15 +10,17 @@ number words buried inside ordinary words got eaten too::
 To undo it we need every way a digit run could have been spelled out.
 """
 
+from __future__ import annotations
+
 from itertools import product
-from typing import Iterator, Optional
+from typing import Dict, Iterator, Optional, Set, Tuple
 
 from pythainlp.util import num_to_thaiword
 
 #: Readings for a single digit, most common first.  1 and 2 are genuinely
 #: ambiguous in Thai: เอ็ด/ยี่ are the forms used inside compound numerals
 #: (ยี่สิบเอ็ด = 21), หนึ่ง/สอง the standalone forms.
-DIGIT_READINGS = {
+DIGIT_READINGS: Dict[str, Tuple[str, ...]] = {
     "0": ("ศูนย์",),
     "1": ("หนึ่ง", "เอ็ด"),
     "2": ("สอง", "ยี่"),
@@ -35,7 +37,7 @@ DIGIT_READINGS = {
 _MAX_CARTESIAN_DIGITS = 4
 
 #: Thai magnitude words and their values.
-MAGNITUDES = {
+MAGNITUDES: Dict[str, int] = {
     "ล้าน": 10 ** 6,
     "แสน": 10 ** 5,
     "หมื่น": 10 ** 4,
@@ -46,7 +48,9 @@ MAGNITUDES = {
 
 #: Number words that can stand in front of a magnitude as its coefficient, as in
 #: สองพัน = 2,000.  Their presence means the magnitude is not an implicit one.
-COEFFICIENTS = tuple(w for group in DIGIT_READINGS.values() for w in group)
+COEFFICIENTS: Tuple[str, ...] = tuple(
+    word for group in DIGIT_READINGS.values() for word in group
+)
 
 
 def joined_value(magnitude: int, digits: int) -> Optional[int]:
@@ -77,7 +81,7 @@ def readings(digits: str) -> Iterator[str]:
     tokenized the original text, so both are offered and the caller picks
     whichever yields a real word.
     """
-    seen = set()
+    seen: Set[str] = set()
 
     if len(digits) > 1:
         try:

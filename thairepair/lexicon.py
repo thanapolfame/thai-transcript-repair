@@ -1,8 +1,10 @@
 """Thai lexicon lookups used to decide whether a repair produced a real word."""
 
+from __future__ import annotations
+
 import re
 from functools import lru_cache
-from typing import List, NamedTuple, Optional, Set, Tuple
+from typing import AbstractSet, FrozenSet, List, NamedTuple, Optional, Tuple
 
 from pythainlp.corpus import thai_words
 from pythainlp.tokenize import word_tokenize
@@ -17,15 +19,20 @@ _THAI_LETTER_RE = re.compile(f"[{THAI_LETTER}]")
 #: in the PyThaiNLP lexicon is well under this; going wider only adds noise.
 MAX_WORD_LEN = 24
 
+#: A lexicon is read-only everywhere it is passed, so it travels as an
+#: ``AbstractSet`` and is built as a ``frozenset``: the default one is cached
+#: and handed to every pass, and a shared mutable set would be a trap.
+Lexicon = AbstractSet[str]
+
 
 def is_thai_letter(ch: str) -> bool:
     return bool(_THAI_LETTER_RE.match(ch))
 
 
 @lru_cache(maxsize=1)
-def default_lexicon() -> Set[str]:
+def default_lexicon() -> FrozenSet[str]:
     """The PyThaiNLP word list (~62k entries), loaded once."""
-    return set(thai_words())
+    return frozenset(thai_words())
 
 
 #: Single spaces the ITN step scattered through the wreckage may be closed up
@@ -94,7 +101,7 @@ def _right_indices(text: str, hi: int) -> List[int]:
 
 
 def covering_word(
-    text: str, lo: int, hi: int, lexicon: Set[str]
+    text: str, lo: int, hi: int, lexicon: Lexicon
 ) -> Optional[WordMatch]:
     """Find the longest lexicon word around ``[lo, hi)`` that fully contains it.
 
@@ -112,7 +119,7 @@ def covering_word(
 
     best: Optional[WordMatch] = None
     for take_left in range(len(left) + 1):
-        prefix_idx = left[len(left) - take_left :] if take_left else []
+        prefix_idx: List[int] = left[len(left) - take_left :] if take_left else []
         prefix = "".join(text[i] for i in prefix_idx)
         for take_right in range(len(right), -1, -1):
             suffix_idx = right[:take_right]
@@ -137,7 +144,7 @@ def word_tokens(text: str) -> List[str]:
 
 
 def _token_spans(text: str) -> List[Tuple[int, int]]:
-    spans = []
+    spans: List[Tuple[int, int]] = []
     pos = 0
     for token in word_tokenize(text, engine="newmm", keep_whitespace=True):
         spans.append((pos, pos + len(token)))
@@ -145,7 +152,7 @@ def _token_spans(text: str) -> List[Tuple[int, int]]:
     return spans
 
 
-def oov_count(text: str, lexicon: Set[str]) -> int:
+def oov_count(text: str, lexicon: Lexicon) -> int:
     """How many Thai tokens in ``text`` are not real words.
 
     This is the segmentation-defect metric.  A digit that swallowed part of a

@@ -1,0 +1,16 @@
+[tool.mypy]
+python_version = "3.9"
+files = ["repair.py", "thairepair", "tests"]
+
+# Strict is the project standard: every function annotated, no implicit Any,
+# no untyped calls.  A new module inherits it by existing.
+strict = true
+
+# Beyond --strict.  The repair passes are dense with index arithmetic and
+# early returns, where an unreachable branch usually means a real mistake.
+warn_unreachable = true
+
+pretty = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
