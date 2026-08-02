@@ -64,6 +64,23 @@ rewritten silently.
 3. **Unresolved** — the digit is glued between Thai letters but no reading
    yields a word. The text is left exactly as-is and reported for review.
 
+Before the digit tier there is one more repair: **stranded magnitude words**.
+The ITN step sometimes converted the tail of a numeral but not its head, leaving
+`มากกว่าพัน 200 ทุน` where `มากกว่า 1,200 ทุน` belongs, or `ร้อย46` for `146`.
+The two are folded together when the digits occupy the magnitude immediately
+below — the canonical spoken form, พันสองร้อย or ร้อยสี่สิบหก.
+
+Everything else is refused and queued for review rather than guessed at:
+
+| case | why it is refused |
+| --- | --- |
+| `หมื่น 5`, `ล้าน 6`, `พัน 2` | colloquial shorthand — หมื่นห้า is 15,000, not 10,005; ล้านหก is 1,600,000, not 1,000,006; and ร้อยห้า is heard as both 105 and 150 |
+| `สองพัน 200` | the magnitude already has a coefficient, so its head is not an implicit one |
+| `ล้าน93 ล้าน` | a magnitude *after* the digits makes them its coefficient — two separate quantities, not 1,000,093 (skipped silently, since nothing is wrong with it) |
+
+Getting a figure wrong in a budget transcript is worse than leaving it as the
+speaker said it, so no ambiguous reading is ever applied.
+
 Then, last, **spacing**: every digit still standing is by now a genuine number,
 so any that is flush against Thai text gets separated from it — `ได้18ท่าน` ->
 `ได้ 18 ท่าน`, `จาก49เหลือ42` -> `จาก 49 เหลือ 42`. Only Thai-letter neighbours

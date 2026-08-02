@@ -150,6 +150,54 @@ def test_unresolved_digits_are_reported_but_not_edited():
     assert [c.confidence for c in changes] == ["unresolved"]
 
 
+# --- magnitude words the ITN step left stranded -----------------------------
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("มากกว่าพัน 200 ทุนนะครับ", "มากกว่า 1,200 ทุนนะครับ"),
+        ("มีอาจารย์ตั้งพัน 200 คน", "มีอาจารย์ตั้ง 1,200 คน"),
+        ("ไปทำให้มาเป็นพัน200ทุน", "ไปทำให้มาเป็น 1,200 ทุน"),
+        ("มีอาจารย์เพียงร้อย46 คน", "มีอาจารย์เพียง 146 คน"),
+        ("อยู่สิบ 5 คน", "อยู่ 15 คน"),
+    ],
+)
+def test_folds_a_magnitude_word_into_the_digits_it_belongs_to(text, expected):
+    assert fix(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Colloquial shorthand: หมื่นห้า is 15,000, not 10,005; ล้านหก is
+        # 1,600,000, not 1,000,006.  And ร้อยห้า is heard as both 105 and 150.
+        "อยากจะจ่ายสักหมื่น 5 ก่อน",
+        "มีการกันเงินไว้ล้าน 6 นะครับ",
+        "ขาดแคลนพัน 2 ทุน",
+        "เหลืออีกร้อย 5 บาท",
+        # Already has a coefficient of its own, so the head is not an implicit one.
+        "มีสองพัน 200 คน",
+    ],
+)
+def test_ambiguous_magnitudes_are_queued_for_review_not_guessed(text):
+    fixed, changes = repair_text(text)
+    assert fixed == text
+    assert [c.confidence for c in changes if c.rule == "numword"] == ["unresolved"]
+
+
+def test_a_magnitude_after_the_digits_means_two_separate_quantities():
+    """"ล้าน93 ล้าน" is 93 million alongside another figure, not 1,000,093."""
+    fixed, changes = repair_text("ได้รับ 7,000,080 ล้าน93 ล้านแล้ว")
+    assert fixed == "ได้รับ 7,000,080 ล้าน 93 ล้านแล้ว"  # spacing only
+    assert [c for c in changes if c.rule == "numword"] == []
+
+
+@pytest.mark.parametrize("text", ["ร้อยละ 20 ของงบ", "งบ 81 ล้านนะครับ"])
+def test_ordinary_magnitude_usage_is_untouched(text):
+    assert fix(text) == text
+
+
 # --- spacing genuine numbers off from the Thai text -------------------------
 
 

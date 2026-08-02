@@ -11,7 +11,7 @@ To undo it we need every way a digit run could have been spelled out.
 """
 
 from itertools import product
-from typing import Iterator
+from typing import Iterator, Optional
 
 from pythainlp.util import num_to_thaiword
 
@@ -33,6 +33,39 @@ DIGIT_READINGS = {
 
 #: Above this many digits the per-digit cartesian product stops being worth it.
 _MAX_CARTESIAN_DIGITS = 4
+
+#: Thai magnitude words and their values.
+MAGNITUDES = {
+    "ล้าน": 10 ** 6,
+    "แสน": 10 ** 5,
+    "หมื่น": 10 ** 4,
+    "พัน": 10 ** 3,
+    "ร้อย": 10 ** 2,
+    "สิบ": 10,
+}
+
+#: Number words that can stand in front of a magnitude as its coefficient, as in
+#: สองพัน = 2,000.  Their presence means the magnitude is not an implicit one.
+COEFFICIENTS = tuple(w for group in DIGIT_READINGS.values() for w in group)
+
+
+def joined_value(magnitude: int, digits: int) -> Optional[int]:
+    """Combine a magnitude word with the digits that follow it, or refuse.
+
+    ``พัน 200`` is 1,200: the ITN step spelled ``สองร้อย`` out as ``200`` but left
+    ``พัน`` as a word, and the two simply add.  That reading only holds when the
+    digits occupy the magnitude immediately below — the canonical spoken form,
+    พันสองร้อย or ร้อยสี่สิบหก.
+
+    A single digit after a large magnitude is a different, colloquial
+    construction: หมื่นห้า is 15,000 rather than 10,005, and ล้านหก is 1,600,000
+    rather than 1,000,006.  Since ร้อยห้า is heard as both 105 and 150, there is
+    no rule that settles all of them, so those are refused here and left for a
+    human.
+    """
+    if magnitude // 10 <= digits < magnitude:
+        return magnitude + digits
+    return None
 
 
 def readings(digits: str) -> Iterator[str]:

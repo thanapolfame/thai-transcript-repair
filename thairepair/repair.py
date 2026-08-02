@@ -16,7 +16,15 @@ from .lexicon import (
     oov_count,
     token_span,
 )
-from .numbers import readings
+from .numbers import COEFFICIENTS, MAGNITUDES, joined_value, readings
+
+#: A magnitude word with digits stuck to it — the ITN step converted the tail of
+#: a numeral but not its head, leaving "พัน 200" where "1,200" belongs.
+_MAGNITUDE_RE = re.compile(f"({'|'.join(MAGNITUDES)})[ \t]*([0-9][0-9,]*)")
+
+#: Another magnitude right after the digits means they are that one's
+#: coefficient, not a remainder: "ล้าน93 ล้าน" is two quantities, not 1,000,093.
+_MAGNITUDE_AHEAD_RE = re.compile(f"[ \t]*(?:{'|'.join(MAGNITUDES)})")
 
 #: A digit run with Thai letters on both sides, optionally spaced off from
 #: them.  The ITN step sometimes padded its replacement, so the same corruption
@@ -137,6 +145,40 @@ def _thai_run(text: str, lo: int, hi: int) -> Tuple[int, int]:
     return lo, hi
 
 
+def join_magnitude_words(text: str) -> Tuple[str, List[Change]]:
+    """Fold a leftover Thai magnitude word into the digits it belongs to.
+
+    ``มากกว่าพัน 200 ทุน`` -> ``มากกว่า 1,200 ทุน``.  Only the canonical form is
+    folded; readings that Thai itself leaves ambiguous (``หมื่น 5``, ``ล้าน 6``)
+    are left untouched and put on the review queue instead of being guessed at,
+    because getting a figure wrong in a budget transcript is worse than leaving
+    it as the speaker said it.
+    """
+    changes: List[Change] = []
+    out = []
+    pos = 0
+    for match in _MAGNITUDE_RE.finditer(text):
+        word, digits_text = match.groups()
+        if _MAGNITUDE_AHEAD_RE.match(text, match.end()):
+            continue
+        line, col = _line_col(text, match.start())
+        value = joined_value(MAGNITUDES[word], int(digits_text.replace(",", "")))
+        if value is None or text[: match.start()].endswith(COEFFICIENTS):
+            # Ambiguous, or the magnitude already has a coefficient of its own
+            # (สองพัน 200).  Flag it and change nothing.
+            changes.append(
+                Change(line, col, match.group(), match.group(), "unresolved", "numword")
+            )
+            continue
+        joined = f"{value:,}"
+        changes.append(Change(line, col, match.group(), joined, "high", "numword"))
+        out.append(text[pos : match.start()])
+        out.append(joined)
+        pos = match.end()
+    out.append(text[pos:])
+    return "".join(out), changes
+
+
 def space_numbers(text: str) -> Tuple[str, List[Change]]:
     """Separate genuine numbers from the Thai text they are flush against.
 
@@ -148,7 +190,9 @@ def space_numbers(text: str) -> Tuple[str, List[Change]]:
     changes: List[Change] = []
     out = []
     pos = 0
-    for match in re.finditer(r"[0-9]+", text):
+    # Group-separated numbers count as one token, so 1,200 is spaced as a whole
+    # rather than as "1" and "200".
+    for match in re.finditer(r"[0-9]+(?:,[0-9]+)*", text):
         start, end = match.span()
         pad_left = start > 0 and is_thai_letter(text[start - 1])
         pad_right = end < len(text) and is_thai_letter(text[end])
@@ -306,6 +350,11 @@ def repair_text(
     if overrides:
         text, override_changes = _apply_overrides(text, overrides)
         changes.extend(override_changes)
+
+    # Before the digit tier, so "พัน200ทุน" is already "1,200ทุน" and its digits
+    # are no longer a glued-between-Thai site to puzzle over.
+    text, magnitude_changes = join_magnitude_words(text)
+    changes.extend(magnitude_changes)
 
     text, digit_changes = _repair_digits(text, lexicon, aggressive)
     changes.extend(digit_changes)
