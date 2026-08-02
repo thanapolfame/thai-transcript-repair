@@ -310,6 +310,28 @@ def test_no_space_is_added_at_the_edge_of_a_line() -> None:
     assert replaced("อื่นๆ\nต่อไป") == "อื่น ๆ\nต่อไป"
 
 
+def test_a_latin_replacement_is_spaced_off_thai_without_padding_in_the_csv() -> None:
+    """``เขาdiscussกัน`` is not readable; the CSV should not have to say so."""
+    latin = {"ดิสคัส": "discuss", "โอเปอเรต": "operate"}
+    assert fix("เขาดิสคัสกัน", replacements=latin) == "เขา discuss กัน"
+    assert fix("ตอนนี้โอเปอเรตทุกแห่ง", replacements=latin) == "ตอนนี้ operate ทุกแห่ง"
+
+
+def test_a_latin_replacement_does_not_double_a_space_already_there() -> None:
+    latin = {"ดิสคัส": "discuss"}
+    assert fix("เขา ดิสคัส กัน", replacements=latin) == "เขา discuss กัน"
+    assert fix("เขาดิสคัส กัน", replacements=latin) == "เขา discuss กัน"
+    assert fix("ดิสคัส", replacements=latin) == "discuss"
+
+
+def test_only_thai_neighbours_ask_for_the_latin_space() -> None:
+    assert fix("(ดิสคัส)", replacements={"ดิสคัส": "discuss"}) == "(discuss)"
+
+
+def test_a_thai_replacement_is_not_spaced_off() -> None:
+    assert fix("เชิญท่านพิการครับ", replacements=REPLACE) == "เชิญท่านอธิการครับ"
+
+
 def test_a_blank_replacement_deletes_the_word() -> None:
     assert replaced("ผมฮ่ะคิดว่า") == "ผมคิดว่า"
 

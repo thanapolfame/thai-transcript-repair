@@ -317,6 +317,11 @@ def _is_blank(ch: str) -> bool:
     return ch == "" or ch.isspace()
 
 
+def _is_latin(ch: str) -> bool:
+    """True for an ASCII letter — the script that has to be spaced off Thai."""
+    return ch.isascii() and ch.isalpha()
+
+
 def apply_replacements(
     text: str, replacements: dict[str, str] | None = None
 ) -> tuple[str, list[Change]]:
@@ -329,6 +334,12 @@ def apply_replacements(
     correct ``อื่น ๆ อาจ`` alone, instead of pushing it out a space per run.
     Replacements have to be idempotent — the same transcript gets repaired more
     than once in practice, and a rule that drifts on every pass is a trap.
+
+    A replacement that begins or ends in **Latin script** asks for that space
+    implicitly when it lands against Thai, because ``เขาdiscussกัน`` is not
+    readable: ``ดิสคัส,discuss`` needs no padding in the CSV to come out as
+    ``เขา discuss กัน``.  Only Thai neighbours count, the same rule
+    ``space_numbers`` follows, so ``part2.m4a`` and the like are left alone.
 
     A ``correct`` cell that is blank deletes the word, closing up behind it so
     the deletion cannot leave a double space in the middle of a line.
@@ -358,8 +369,17 @@ def apply_replacements(
                 if prev == " " and nxt == " ":
                     end += 1
             else:
-                lead = " " if correct[:1] == " " and not _is_blank(prev) else ""
-                trail = " " if correct[-1:] == " " and not _is_blank(nxt) else ""
+                # A Latin edge landing against Thai asks for the space on its
+                # own account, so ``โอเปอเรต,operate`` does not have to carry
+                # padding that is invisible in the CSV.
+                want_lead = correct[:1] == " " or (
+                    _is_latin(body[:1]) and is_thai_letter(prev)
+                )
+                want_trail = correct[-1:] == " " or (
+                    _is_latin(body[-1:]) and is_thai_letter(nxt)
+                )
+                lead = " " if want_lead and not _is_blank(prev) else ""
+                trail = " " if want_trail and not _is_blank(nxt) else ""
                 replacement = lead + body + trail
 
             settled = idx + len(replacement)
