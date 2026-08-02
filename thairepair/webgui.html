@@ -1,0 +1,428 @@
+<!doctype html>
+<html lang="th">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ซ่อมไฟล์ถอดเสียงภาษาไทย · thairepair</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --card: #ffffff;
+      --ink: #16191d;
+      --muted: #6b7280;
+      --line: #e2e5ea;
+      --accent: #1f6feb;
+      --accent-soft: #eaf1fd;
+      --good: #157347;
+      --warn: #9a6700;
+      --warn-soft: #fff8e5;
+      --bad: #b42318;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #16181c;
+        --card: #1e2126;
+        --ink: #e9ecf1;
+        --muted: #9aa3af;
+        --line: #2f343c;
+        --accent: #6ea8fe;
+        --accent-soft: #21304a;
+        --good: #6fcf97;
+        --warn: #e8c468;
+        --warn-soft: #33291020;
+        --bad: #f28b82;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 2.5rem 1.25rem 4rem;
+      background: var(--bg);
+      color: var(--ink);
+      font: 16px/1.6 "Sarabun", "Leelawadee UI", "Noto Sans Thai", -apple-system,
+        BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    main {
+      max-width: 44rem;
+      margin: 0 auto;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      margin: 0 0 .25rem;
+    }
+
+    .sub {
+      color: var(--muted);
+      margin: 0 0 2rem;
+    }
+
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+
+    #drop {
+      border: 2px dashed var(--line);
+      border-radius: 14px;
+      padding: 3rem 1.5rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .15s, background .15s;
+      background: var(--card);
+    }
+
+    #drop:hover,
+    #drop.over {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+
+    #drop.busy {
+      cursor: progress;
+      opacity: .65;
+    }
+
+    #drop .big {
+      font-size: 1.15rem;
+      font-weight: 600;
+    }
+
+    #drop .small {
+      color: var(--muted);
+      font-size: .9rem;
+      margin-top: .4rem;
+    }
+
+    input[type=file] {
+      display: none;
+    }
+
+    details {
+      margin-top: 1rem;
+    }
+
+    summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: .9rem;
+    }
+
+    .opts {
+      display: grid;
+      gap: .6rem;
+      margin-top: 1rem;
+    }
+
+    .opt {
+      display: flex;
+      gap: .6rem;
+      align-items: flex-start;
+    }
+
+    .opt input {
+      margin-top: .45rem;
+    }
+
+    .opt .en {
+      color: var(--muted);
+      font-size: .85rem;
+      display: block;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .5rem;
+      margin: 0 0 1rem;
+      padding: 0;
+      list-style: none;
+    }
+
+    .chip {
+      background: var(--accent-soft);
+      border-radius: 999px;
+      padding: .25rem .8rem;
+      font-size: .9rem;
+    }
+
+    .chip b {
+      font-variant-numeric: tabular-nums;
+    }
+
+    .chip.warn {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    h2 {
+      font-size: 1.05rem;
+      margin: 0 0 .75rem;
+    }
+
+    .files {
+      display: flex;
+      flex-wrap: wrap;
+      gap: .75rem;
+    }
+
+    a.dl {
+      display: inline-block;
+      background: var(--accent);
+      color: #fff;
+      text-decoration: none;
+      padding: .55rem 1.1rem;
+      border-radius: 8px;
+      font-size: .95rem;
+    }
+
+    a.dl.ghost {
+      background: transparent;
+      color: var(--accent);
+      border: 1px solid var(--accent);
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: .875rem;
+      margin-top: .9rem;
+    }
+
+    .queue {
+      max-height: 15rem;
+      overflow: auto;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: .9rem;
+    }
+
+    th,
+    td {
+      text-align: start;
+      padding: .4rem .7rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    th {
+      position: sticky;
+      top: 0;
+      background: var(--card);
+      color: var(--muted);
+      font-weight: 600;
+    }
+
+    tr:last-child td {
+      border-bottom: 0;
+    }
+
+    td.line {
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+      width: 4.5rem;
+    }
+
+    .err {
+      color: var(--bad);
+    }
+  </style>
+</head>
+
+<body>
+  <main>
+    <h1>ซ่อมไฟล์ถอดเสียงภาษาไทย</h1>
+    <p class="sub">ลากไฟล์ <code>.txt</code> มาวาง แล้วระบบจะดาวน์โหลดไฟล์ผลลัพธ์ให้อัตโนมัติ · drop a transcript, get
+      the repaired files back</p>
+
+
+    <summary>ตัวเลือกขั้นสูง · advanced options</summary>
+    <div class="opts">
+      <label class="opt"><input type="checkbox" id="normalize" checked><span>จัดรูปวรรณยุกต์/สระซ้ำให้เป็นมาตรฐาน<span
+            class="en">normalize tone marks and duplicate vowels</span></span></label>
+      <label class="opt"><input type="checkbox" id="join_words" checked><span>ต่อคำที่ถูกตัดด้วยช่องว่าง<span
+            class="en">join words the ASR split across spaces (ประสบการ ณ ์)</span></span></label>
+      <label class="opt"><input type="checkbox" id="collapse_spaces"
+          checked><span>รวมบรรทัดที่เว้นวรรคทุกคำให้เป็นข้อความปกติ<span class="en">close up over-spaced
+            lines</span></span></label>
+      <label class="opt"><input type="checkbox" id="space_numbers" checked><span>เว้นวรรครอบตัวเลขจริง<span
+            class="en">space genuine numbers off Thai text (ได้18ท่าน → ได้ 18 ท่าน)</span></span></label>
+      <label class="opt"><input type="checkbox" id="aggressive"><span>ซ่อมตัวเลขที่ติดอักษรไทยเพียงด้านเดียวด้วย<span
+            class="en">aggressive — needs review, will fire on 45บาท</span></span></label>
+    </div>
+    <br>
+
+    <div id="drop" tabindex="0" role="button" aria-label="เลือกไฟล์">
+      <div class="big">ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์</div>
+      <div class="small">รับไฟล์ข้อความ .txt (UTF-8 หรือ TIS-620) · ไฟล์ไม่ถูกส่งออกนอกเครื่อง</div>
+      <input type="file" id="file" accept=".txt,text/plain">
+    </div>
+
+    <div id="status" class="card hidden"></div>
+
+    <section id="result" class="card hidden">
+      <ul class="chips" id="chips"></ul>
+      <h2>ไฟล์ผลลัพธ์ · output files</h2>
+      <div class="files" id="files"></div>
+      <p class="note" id="note"></p>
+    </section>
+
+    <section id="queue-card" class="card hidden">
+      <h2>ต้องตรวจสอบด้วยตนเอง · needs review</h2>
+      <p class="note" style="margin-top:0">ตัวเลขที่ติดอยู่กลางคำแต่ระบบไม่แน่ใจ จึงปล่อยไว้ตามเดิม</p>
+      <div class="queue">
+        <table>
+          <thead>
+            <tr>
+              <th>บรรทัด</th>
+              <th>ข้อความ</th>
+            </tr>
+          </thead>
+          <tbody id="queue"></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const RULES = {
+      normalize: "จัดรูปอักขระ",
+      csv: "แก้ตามตารางคำ",
+      numword: "รวมคำบอกจำนวน",
+      digit: "ซ่อมคำที่เป็นตัวเลข",
+      join: "ต่อคำที่ถูกตัด",
+      collapse: "รวมช่องว่าง",
+      spacing: "เว้นวรรคตัวเลข",
+      unresolved: "ต้องตรวจสอบ",
+    };
+    const OPTIONS = ["normalize", "join_words", "collapse_spaces", "space_numbers", "aggressive"];
+
+    const drop = document.getElementById("drop");
+    const picker = document.getElementById("file");
+    const statusBox = document.getElementById("status");
+    const result = document.getElementById("result");
+    const queueCard = document.getElementById("queue-card");
+    let busy = false;
+
+    drop.addEventListener("click", () => { if (!busy) picker.click(); });
+    drop.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!busy) picker.click(); }
+    });
+    picker.addEventListener("change", () => {
+      if (picker.files.length) run(picker.files[0]);
+      picker.value = "";          // so the same file can be re-dropped
+    });
+    for (const type of ["dragenter", "dragover"]) {
+      drop.addEventListener(type, (e) => { e.preventDefault(); drop.classList.add("over"); });
+    }
+    for (const type of ["dragleave", "drop"]) {
+      drop.addEventListener(type, () => drop.classList.remove("over"));
+    }
+    drop.addEventListener("drop", (e) => {
+      e.preventDefault();
+      if (!busy && e.dataTransfer.files.length) run(e.dataTransfer.files[0]);
+    });
+
+    function show(box, html) { box.innerHTML = html; box.classList.remove("hidden"); }
+
+    async function run(file) {
+      busy = true;
+      drop.classList.add("busy");
+      result.classList.add("hidden");
+      queueCard.classList.add("hidden");
+      show(statusBox, `กำลังซ่อม <b>${escapeHtml(file.name)}</b> …`);
+
+      const params = new URLSearchParams();
+      for (const id of OPTIONS) params.set(id, document.getElementById(id).checked ? "1" : "0");
+
+      try {
+        const response = await fetch("/repair?" + params, { method: "POST", body: file });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "เกิดข้อผิดพลาด");
+        report(file, data);
+      } catch (err) {
+        show(statusBox, `<span class="err">ไม่สำเร็จ: ${escapeHtml(err.message)}</span>`);
+      } finally {
+        busy = false;
+        drop.classList.remove("busy");
+      }
+    }
+
+    function report(file, data) {
+      const stem = file.name.replace(/\.[^.]+$/, "");
+      const fixedName = `${stem}.fixed.txt`;
+      const reportName = `${stem}.report.csv`;
+
+      // The BOM is what makes Excel read the CSV as UTF-8 rather than mojibake.
+      const fixedUrl = blobUrl(data.fixed, "text/plain");
+      const reportUrl = blobUrl("﻿" + data.report, "text/csv");
+
+      statusBox.classList.add("hidden");
+
+      const chips = document.getElementById("chips");
+      chips.innerHTML = data.counts.length
+        ? data.counts.map((c) =>
+          `<li class="chip${c.rule === "unresolved" ? " warn" : ""}">${RULES[c.rule] || c.rule} <b>${c.n}</b></li>`
+        ).join("")
+        : `<li class="chip">ไม่พบจุดที่ต้องแก้</li>`;
+
+      document.getElementById("files").innerHTML =
+        `<a class="dl" href="${fixedUrl}" download="${escapeHtml(fixedName)}">${escapeHtml(fixedName)}</a>` +
+        `<a class="dl ghost" href="${reportUrl}" download="${escapeHtml(reportName)}">${escapeHtml(reportName)}</a>`;
+      document.getElementById("note").textContent =
+        `${escapeHtml(file.name)} · ${data.lines} บรรทัด · อ่านเป็น ${data.encoding} · ` +
+        `ถ้าเบราว์เซอร์ไม่ดาวน์โหลดให้อัตโนมัติ ให้กดที่ชื่อไฟล์ด้านบน`;
+      result.classList.remove("hidden");
+
+      const queue = document.getElementById("queue");
+      if (data.unresolved.length) {
+        queue.innerHTML = data.unresolved.map((row) =>
+          `<tr><td class="line">${row.line}</td><td>${escapeHtml(row.before)}</td></tr>`
+        ).join("");
+        queueCard.classList.remove("hidden");
+      }
+
+      save(fixedUrl, fixedName);
+      // Chrome treats two downloads a beat apart as one action; back to back it
+      // sometimes drops the second.
+      setTimeout(() => save(reportUrl, reportName), 400);
+    }
+
+    function blobUrl(text, type) {
+      return URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));
+    }
+
+    function save(url, name) {
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, (ch) =>
+        ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch]));
+    }
+  </script>
+</body>
+
+</html>

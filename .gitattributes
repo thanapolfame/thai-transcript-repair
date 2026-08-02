@@ -1,0 +1,3 @@
+start-gui.bat text eol=crlf
+start-gui.sh text eol=lf
+start-gui.command text eol=lf

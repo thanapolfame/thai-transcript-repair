@@ -22,7 +22,30 @@ scattered through the wreckage itself, so one corruption shows up as `ควา�
 and are closed up along with the digits — but a **double** space is left alone,
 since that is real phrase separation rather than a broken word.
 
-## Usage
+## Usage — the window
+
+For anyone who would rather not open a terminal:
+
+| | |
+| --- | --- |
+| Windows | double-click `start-gui.bat` |
+| macOS | double-click `start-gui.command` |
+| Linux | run `./start-gui.sh` |
+
+The first launch builds `.venv` and installs the dependencies — a few minutes,
+once. After that it opens a page in the default browser: drag a `.txt`
+transcript onto it and the two outputs, `<name>.fixed.txt` and
+`<name>.report.csv`, download by themselves. Unresolved digits are listed on the
+page as a review queue, and the checkboxes under *ตัวเลือกขั้นสูง* are the CLI
+flags below.
+
+Input may be UTF-8 or TIS-620/cp874 — whichever Word or Excel produced. The
+report is written with a BOM so Excel opens the Thai correctly. The server binds
+to `127.0.0.1` and holds the file in memory only; nothing leaves the machine and
+nothing is written to disk except the browser's own downloads. Close the
+terminal window it opened to stop it.
+
+## Usage — the command line
 
 Python 3.13 or newer.
 

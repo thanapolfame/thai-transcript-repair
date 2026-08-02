@@ -1,6 +1,7 @@
 """Repair Thai words whose number-word syllables were rewritten as digits."""
 
 import csv
+import io
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -561,18 +562,25 @@ def repair_text(
     return text, changes
 
 
+def report_csv(changes: Sequence[Change]) -> str:
+    """The report as one CSV string, for callers that do not want a file."""
+    buffer = io.StringIO(newline="")
+    writer = csv.writer(buffer)
+    writer.writerow(["line", "col", "before", "after", "confidence", "rule"])
+    for change in changes:
+        writer.writerow(
+            [
+                change.line,
+                change.col,
+                change.before,
+                change.after,
+                change.confidence,
+                change.rule,
+            ]
+        )
+    return buffer.getvalue()
+
+
 def write_report(path: Path, changes: Sequence[Change]) -> None:
-    with open(path, "w", encoding="utf-8", newline="") as fh:
-        writer = csv.writer(fh)
-        writer.writerow(["line", "col", "before", "after", "confidence", "rule"])
-        for change in changes:
-            writer.writerow(
-                [
-                    change.line,
-                    change.col,
-                    change.before,
-                    change.after,
-                    change.confidence,
-                    change.rule,
-                ]
-            )
+    # newline="" so the csv module's own \r\n line endings survive untranslated.
+    path.write_text(report_csv(changes), encoding="utf-8", newline="")

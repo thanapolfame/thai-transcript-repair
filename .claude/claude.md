@@ -1,8 +1,8 @@
 # thairepair — working notes
 
 Repairs Thai ASR transcripts corrupted by an over-eager inverse-text-
-normalization step. `thairepair/` is the library, `repair.py` the CLI,
-`resource/word.csv` the curated regression corpus.
+normalization step. `thairepair/` is the library, `repair.py` the CLI, `gui.py`
+the browser front end, `resource/word.csv` the curated regression corpus.
 
 ## Code standard: strict type checking
 
@@ -15,9 +15,10 @@ advisory; it is the gate.
 ```
 
 The config is `[tool.mypy]` in `pyproject.toml`: `strict = true` plus
-`warn_unreachable`, covering `repair.py`, `thairepair/` and `tests/`. A new
-module is covered the moment it exists — do not add it to an exclude list, and
-do not relax a setting to make an error go away.
+`warn_unreachable`, covering `repair.py`, `gui.py`, `thairepair/` and `tests/`.
+A module inside `thairepair/` is covered the moment it exists; a new script at
+the root has to be listed in `files` by hand. Do not put anything in an exclude
+list, and do not relax a setting to make an error go away.
 
 ### What strict means in practice
 
@@ -63,7 +64,37 @@ pinned in the mypy config. Write modern annotations:
   Order the module rather than reaching for string forward references.
 
 If you bump the runtime again, `python_version` in `pyproject.toml`, the version
-in the README's Usage section, and this section all have to move together.
+in the README's Usage section, the interpreter search in `start-gui.sh` and
+`start-gui.bat` (both refuse anything older), and this section all have to move
+together.
+
+## The GUI
+
+`gui.py` is a launcher; the work is in `thairepair/webgui.py`, a stdlib
+`http.server` bound to loopback that serves `webgui.html` and answers
+`POST /repair` with the repaired text and the report as JSON. No new
+dependencies — the browser is the toolkit, and "download" is the only way the
+outputs reach disk.
+
+Two things to keep in mind when changing it:
+
+- **The page is outside the type gate.** `webgui.html` is HTML and JavaScript,
+  which mypy never sees, so decisions belong in Python where they are checked.
+  The JS is deliberately thin: post the file, render counts, save two blobs.
+- **A repair option lives in three places.** Adding one means a flag in
+  `repair.py`, a `_flag(...)` read in `repair_upload()`, and a checkbox whose
+  `id` matches the query-string key plus an entry in the page's `OPTIONS` list.
+  The `id` *is* the wire format; a typo silently falls back to the default.
+
+`report_csv()` is the report as a string and `write_report()` is a thin wrapper
+over it — the GUI needs the text, the CLI needs the file, and both must produce
+the same bytes. `test/*.report.csv` are the CLI's own output, so comparing
+against them catches a drift between the two paths.
+
+Uploads decode UTF-8 first, then cp874: Word and Excel on a Thai Windows
+machine still emit TIS-620, and the strictness of UTF-8 is what does the
+detecting. The report downloads with a BOM, without which Excel renders the Thai
+as mojibake.
 
 ## Testing
 
