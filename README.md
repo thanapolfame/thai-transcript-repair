@@ -66,6 +66,7 @@ without losing the output.
 | `--no-join-words` | leave words the ASR split across spaces (`ประสบการ ณ ์`) |
 | `--no-collapse-spaces` | keep the token spacing on lines spaced between every word |
 | `--no-yamok` | leave a repeated word spelled out instead of folding it to ๆ (`เร็วเร็ว` → `เร็ว ๆ`) |
+| `--no-replace` | skip the curated find-and-replace corpora in `resource/` |
 | `--no-space-numbers` | leave genuine numbers flush against Thai text (`ได้18ท่าน`) |
 
 ## How it works
@@ -114,7 +115,29 @@ separate cleanly, over-spaced lines topping out at a mean of 5.7 and ordinary
 lines starting at 13.1. The test is per line, so lines that were already fine
 keep their phrase breaks, and double spaces are never closed anywhere.
 
-Third, a **repeated word** is written the way Thai writes one, with ไม้ยมก:
+Third, the **curated replacements** are applied: `resource/word-replace.csv` and
+`resource/word-other.csv`, both `wrong,correct`, holding the corrections no rule
+can derive — a proper noun the ASR mangled (`ท่านพิการ` → `ท่านอธิการ`), an
+acronym it misheard (`สจร`, `สชล` → `สจล.`), a filler to drop (`ฮ่ะ`).
+
+Unlike `word.csv` these are read **verbatim**, because the whitespace in the
+`correct` cell is the instruction. A space at either edge asks for a space to be
+*present* there, not for one to be *inserted*: `ๆ, ๆ` turns `อื่นๆอาจ` into
+`อื่น ๆ อาจ` and leaves an already correct `อื่น ๆ อาจ` alone. A blank `correct`
+deletes the word and closes up behind it. Both rules exist so the pass is
+**idempotent** — a transcript gets repaired more than once in practice, and a
+rule that drifts a space per run is a trap. For the same reason a pattern is not
+re-applied when it survives inside its own output, or `สจล` → `สจล.` would
+append a dot every run.
+
+Idempotence is a whole-pipeline property, not a per-pass one, and ไม้ยมก is
+where it went wrong twice: PyThaiNLP holds `จริงๆ` and `ต่างๆ` as single
+entries but not `ๆ`, so the join pass read a standalone mark as an orphan and
+closed the space up again, and the over-spacing detector counted each `ๆ` as a
+one-character fragment and declared a correctly spaced line damaged. Both now
+treat `ๆ` as the mark it is.
+
+Fourth, a **repeated word** is written the way Thai writes one, with ไม้ยมก:
 `เขาวิ่งเร็วเร็วมาก` -> `เขาวิ่งเร็ว ๆ มาก`. The ASR spells the repetition out
 because that is what it heard.
 
@@ -214,11 +237,28 @@ change the offsets.
 
 ## Adding cases
 
-Put newly reviewed pairs in `resource/word.csv`. The test suite is parametrized
-over that file and asserts two things for every row: the corrupted form is
-repaired *without* consulting the overrides (i.e. tier 2 covers it on its own),
-and the correct form is left untouched. A row that only passes via the override
-tier is a signal that tier 2 has a gap.
+Which file a case belongs in depends on whether a rule could have derived it.
+
+`resource/word.csv` is the **regression corpus** for digit repair, and is held
+to the stricter bar. The test suite is parametrized over it and asserts two
+things for every row: the corrupted form is repaired *without* consulting the
+overrides (i.e. tier 2 covers it on its own), and the correct form is left
+untouched. A row that only passes via the override tier is a signal that tier 2
+has a gap — that is the thing to look at, not a reason to add an override.
+
+Everything a rule cannot reach goes in one of the curated corpora instead, which
+carry no such obligation:
+
+| file | holds |
+| --- | --- |
+| `word-replace.csv` | `wrong,correct` — mangled proper nouns, misheard acronyms, fillers to drop |
+| `word-other.csv` | `wrong,correct` — same format, same tier; transliterations and ๆ spacing |
+| `word-yamok.csv` | one word per row under a `yamok` header — words that may fold to ๆ |
+
+The two `wrong,correct` corpora are read verbatim, so a leading or trailing space
+in the `correct` cell is meaningful and a trailing space is invisible in most
+editors — check with `cat -A` if a rule is not doing what you expect. All three
+are re-read per run.
 
 ```bash
 .venv/bin/python -m pytest -q

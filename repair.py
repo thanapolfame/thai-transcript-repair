@@ -55,6 +55,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="keep the token spacing on lines that have a space between every word",
     )
     parser.add_argument(
+        "--no-replace",
+        action="store_true",
+        help="skip the curated find-and-replace corpora in resource/",
+    )
+    parser.add_argument(
         "--no-yamok",
         action="store_true",
         help="leave a repeated word spelled out instead of folding it to ๆ (เร็วเร็ว)",
@@ -82,6 +87,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     no_join_words: bool = args.no_join_words
     no_collapse_spaces: bool = args.no_collapse_spaces
     no_yamok: bool = args.no_yamok
+    no_replace: bool = args.no_replace
 
     text = sys.stdin.read() if str(input_path) == "-" else input_path.read_text("utf-8")
     overrides: dict[str, str] = (
@@ -97,6 +103,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         do_join_words=not no_join_words,
         do_collapse_spaces=not no_collapse_spaces,
         do_yamok=not no_yamok,
+        do_replace=not no_replace,
     )
 
     if output_path:

@@ -4,8 +4,14 @@ from typing import Any
 
 import pytest
 
-from thairepair import load_overrides, load_yamok_words, repair_text
+from thairepair import (
+    load_overrides,
+    load_replacements,
+    load_yamok_words,
+    repair_text,
+)
 from thairepair.numbers import readings
+from thairepair.repair import apply_replacements
 
 WORDS_CSV = Path(__file__).parent.parent / "resource" / "word.csv"
 
@@ -144,8 +150,12 @@ def test_leaves_genuine_numbers_alone(text: str) -> None:
     ],
 )
 def test_genuine_numbers_survive_because_they_break_no_words(text: str) -> None:
-    """They stay digits; spacing them out is a separate, cosmetic step."""
-    assert fix(text, do_space_numbers=False) == text
+    """They stay digits; spacing them out is a separate, cosmetic step.
+
+    The replacement corpus is off for the same reason — ``ใหญ่ๆ`` in the last
+    row is spaced by the curated ``ๆ`` rule, which says nothing about digits.
+    """
+    assert fix(text, do_space_numbers=False, do_replace=False) == text
 
 
 def test_unresolved_digits_are_reported_but_not_edited() -> None:
@@ -265,6 +275,111 @@ def test_collapse_is_reported_and_can_be_switched_off() -> None:
     _, changes = repair_text(OVERSPACED)
     assert [c.rule for c in changes] == ["collapse"]
     assert fix(OVERSPACED, do_collapse_spaces=False) == OVERSPACED
+
+
+# --- the curated replacement corpora ----------------------------------------
+
+REPLACE = {"ท่านพิการ": "ท่านอธิการ", "ๆ": " ๆ ", "ๆๆ": " ๆ ", "ฮ่ะ": " "}
+
+
+def replaced(text: str) -> str:
+    return fix(text, replacements=REPLACE)
+
+
+def test_a_curated_pair_is_replaced() -> None:
+    assert replaced("เชิญท่านพิการครับ") == "เชิญท่านอธิการครับ"
+
+
+def test_an_edge_space_asks_for_a_space_and_inserts_one_when_missing() -> None:
+    assert replaced("วาระอื่นๆอาจจะมี") == "วาระอื่น ๆ อาจจะมี"
+
+
+def test_an_edge_space_does_not_double_one_that_is_already_there() -> None:
+    """Replacements have to be idempotent; transcripts get repaired twice."""
+    assert replaced("วาระอื่น ๆ อาจจะมี") == "วาระอื่น ๆ อาจจะมี"
+    assert replaced("วาระอื่นๆ อาจจะมี") == "วาระอื่น ๆ อาจจะมี"
+
+
+def test_replacing_twice_changes_nothing_the_second_time() -> None:
+    once = replaced("วาระอื่นๆอาจจะมีฮ่ะแน่นอน")
+    assert replaced(once) == once
+
+
+def test_no_space_is_added_at_the_edge_of_a_line() -> None:
+    assert replaced("ๆ") == "ๆ"
+    assert replaced("อื่นๆ\nต่อไป") == "อื่น ๆ\nต่อไป"
+
+
+def test_a_blank_replacement_deletes_the_word() -> None:
+    assert replaced("ผมฮ่ะคิดว่า") == "ผมคิดว่า"
+
+
+def test_a_deletion_does_not_leave_a_double_space() -> None:
+    assert replaced("ผม ฮ่ะ คิดว่า") == "ผม คิดว่า"
+
+
+def test_the_longest_pattern_wins() -> None:
+    assert replaced("อื่นๆๆอาจ") == "อื่น ๆ อาจ"
+
+
+def test_a_pattern_surviving_inside_its_own_output_is_not_reapplied() -> None:
+    """``สจล`` is still there in ``สจล.``; matching the span alone would append
+    a dot on every run."""
+    acronym = {"สจล": " สจล. "}
+    assert fix("ทางสจลครับ", replacements=acronym) == "ทาง สจล. ครับ"
+    assert fix("ทาง สจล. ครับ", replacements=acronym) == "ทาง สจล. ครับ"
+
+
+def test_a_full_repair_run_is_idempotent() -> None:
+    """Every pass has to agree with every other, or the text drifts per run.
+
+    The join pass and the ``ๆ`` rule got this wrong in both directions at once:
+    the lexicon holds ``จริงๆ`` but not ``ๆ``, so joining read a standalone mark
+    as an orphan and closed the space up again.
+    """
+    text = "ก็จริง ๆ วาระอื่นๆอาจจะมีฮ่ะ แล้วก็ทางสจลด้วยนะครับ"
+    once = fix(text)
+    assert fix(once) == once
+
+
+def test_a_standalone_yamok_is_not_an_orphan_for_the_join_pass() -> None:
+    assert fix("ก็จริง ๆ นะครับ", do_replace=False) == "ก็จริง ๆ นะครับ"
+
+
+def test_replacement_is_reported_and_can_be_switched_off() -> None:
+    fixed, changes = repair_text("เชิญท่านพิการครับ", replacements=REPLACE)
+    assert fixed == "เชิญท่านอธิการครับ"
+    assert [(c.rule, c.confidence, c.before, c.after) for c in changes] == [
+        ("replace", "override", "ท่านพิการ", "ท่านอธิการ")
+    ]
+    assert fix("เชิญท่านพิการครับ", do_replace=False) == "เชิญท่านพิการครับ"
+
+
+def test_an_already_correct_string_gets_no_report_row() -> None:
+    """Reported per pass: the join pass upstream still closes ``อื่น ๆ`` up, and
+    this one puts the space back, so only the pass itself can be asserted on."""
+    fixed, changes = apply_replacements("วาระอื่น ๆ อาจจะมี", REPLACE)
+    assert (fixed, changes) == ("วาระอื่น ๆ อาจจะมี", [])
+    assert fix("วาระอื่น ๆ อาจจะมี", replacements=REPLACE) == "วาระอื่น ๆ อาจจะมี"
+
+
+def test_the_corpora_are_read_from_the_resource_files() -> None:
+    from thairepair.repair import DEFAULT_REPLACEMENTS, default_replacements
+
+    merged = default_replacements()
+    assert merged  # the resource tree ships at least one pair
+    for path in DEFAULT_REPLACEMENTS:
+        if path.exists():
+            assert load_replacements(path).items() <= merged.items()
+
+
+def test_the_loader_keeps_the_whitespace_that_carries_the_instruction(
+    tmp_path: Path,
+) -> None:
+    """``load_overrides`` strips; this one must not, or ``ๆ, ๆ`` is a no-op."""
+    corpus = tmp_path / "word-replace.csv"
+    corpus.write_text("wrong,correct\nๆ, ๆ \nฮ่ะ, \n", encoding="utf-8")
+    assert load_replacements(corpus) == {"ๆ": " ๆ ", "ฮ่ะ": " "}
 
 
 # --- a repeated word is spelled ๆ -------------------------------------------

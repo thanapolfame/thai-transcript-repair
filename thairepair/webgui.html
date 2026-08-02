@@ -262,6 +262,8 @@
       <label class="opt"><input type="checkbox" id="collapse_spaces"
           checked><span>รวมบรรทัดที่เว้นวรรคทุกคำให้เป็นข้อความปกติ<span class="en">close up over-spaced
             lines</span></span></label>
+      <label class="opt"><input type="checkbox" id="replace" checked><span>แทนที่คำตามรายการที่คัดไว้<span
+            class="en">apply the curated word replacements (ท่านพิการ → ท่านอธิการ)</span></span></label>
       <label class="opt"><input type="checkbox" id="yamok" checked><span>ย่อคำซ้ำด้วยไม้ยมก<span
             class="en">fold a repeated word to ๆ (เร็วเร็ว → เร็ว ๆ)</span></span></label>
       <label class="opt"><input type="checkbox" id="space_numbers" checked><span>เว้นวรรครอบตัวเลขจริง<span
@@ -314,7 +316,7 @@
       spacing: "เว้นวรรคตัวเลข",
       unresolved: "ต้องตรวจสอบ",
     };
-    const OPTIONS = ["normalize", "join_words", "collapse_spaces", "yamok", "space_numbers", "aggressive"];
+    const OPTIONS = ["normalize", "join_words", "collapse_spaces", "replace", "yamok", "space_numbers", "aggressive"];
 
     const drop = document.getElementById("drop");
     const picker = document.getElementById("file");

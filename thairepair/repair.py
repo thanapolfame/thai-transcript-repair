@@ -59,8 +59,11 @@ _FRAGMENT_RE = re.compile(f"[{THAI_LETTER}]+")
 MAX_JOIN_FRAGMENTS = 4
 
 #: A single space between two Thai letters — the kind the ASR sprinkles between
-#: tokens.  A double space is left alone; that is real phrase separation.
-_INNER_SPACE_RE = re.compile(f"(?<=[{THAI_LETTER}])[ \t](?=[{THAI_LETTER}])")
+#: tokens.  A double space is left alone; that is real phrase separation, and so
+#: is a space touching ไม้ยมก, which is how the mark is set off in correct Thai.
+_INNER_SPACE_RE = re.compile(
+    f"(?<=[{THAI_LETTER}])(?<!ๆ)[ \t](?!ๆ)(?=[{THAI_LETTER}])"
+)
 
 #: A line whose Thai runs are this short on average was emitted with a space
 #: between nearly every token.  On a real transcript the two populations
@@ -77,8 +80,20 @@ CONFIDENCES: tuple[str, ...] = ("override", "high", "ambiguous", "unresolved")
 #: each side, which is why the replacement is " ๆ " and not a bare character.
 YAMOK = "ๆ"
 
+RESOURCE = Path(__file__).parent.parent / "resource"
+
 #: The curated word list, alongside the other ``resource/`` corpora.
-DEFAULT_YAMOK = Path(__file__).parent.parent / "resource" / "word-yamok.csv"
+DEFAULT_YAMOK = RESOURCE / "word-yamok.csv"
+
+#: Curated ``wrong,correct`` corpora applied verbatim by the replacement pass.
+#: Separate from ``word.csv``, which is the digit-repair regression corpus and
+#: is held to a stricter bar — every row there must also be reachable by the
+#: lexicon tier.  These are the corrections that no rule can derive: a mangled
+#: proper noun, an acronym the ASR misheard, a filler word to drop.
+DEFAULT_REPLACEMENTS: tuple[Path, ...] = (
+    RESOURCE / "word-replace.csv",
+    RESOURCE / "word-other.csv",
+)
 
 #: A stretch of Thai fragments separated by at most one space — the unit the
 #: yamok pass works in.  A double space ends the run, so a repetition is never
@@ -206,6 +221,40 @@ def load_overrides(path: Path) -> dict[str, str]:
     return overrides
 
 
+def load_replacements(path: Path) -> dict[str, str]:
+    """Read ``wrong -> correct`` pairs from a replacement CSV, **verbatim**.
+
+    Unlike ``load_overrides`` this does not strip, because the whitespace in the
+    ``correct`` cell is the instruction: ``ๆ, ๆ`` (with a space each side) asks
+    for the mark to be set off from its neighbours, and ``ฮ่ะ, `` asks for the
+    filler to go away and leave a space behind.  See ``_apply_replacements`` for
+    exactly what a leading or trailing space buys.
+
+    An empty ``wrong`` is skipped — it would match at every position.
+    """
+    replacements: dict[str, str] = {}
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        for row in csv.DictReader(fh):
+            wrong: str = row.get("wrong") or ""
+            correct: str = row.get("correct") or ""
+            if wrong and wrong != correct:
+                replacements[wrong] = correct
+    return replacements
+
+
+def default_replacements() -> dict[str, str]:
+    """Every ``DEFAULT_REPLACEMENTS`` corpus that exists, merged.
+
+    Later files win a collision, and like ``default_yamok_words()`` this is
+    uncached so an edit lands on the next run without a restart.
+    """
+    merged: dict[str, str] = {}
+    for path in DEFAULT_REPLACEMENTS:
+        if path.exists():
+            merged.update(load_replacements(path))
+    return merged
+
+
 def load_yamok_words(path: Path) -> frozenset[str]:
     """Read reduplicable words from a one-column ``yamok`` CSV.
 
@@ -258,6 +307,80 @@ def _apply_overrides(
     return text, changes
 
 
+def _is_yamok(fragment: str) -> bool:
+    """True for a fragment that is nothing but repetition marks."""
+    return bool(fragment) and fragment.strip(YAMOK) == ""
+
+
+def _is_blank(ch: str) -> bool:
+    """True for whitespace and for the empty string that stands in for an edge."""
+    return ch == "" or ch.isspace()
+
+
+def apply_replacements(
+    text: str, replacements: dict[str, str] | None = None
+) -> tuple[str, list[Change]]:
+    """Curated find-and-replace, with the spacing the corpus asks for.
+
+    ``ท่านพิการ`` -> ``ท่านอธิการ`` is the plain case.  The interesting one is
+    what a space at the edge of the ``correct`` cell means: it asks for a space
+    to be *present* there, not for one to be *inserted*.  So ``ๆ, ๆ`` (spaced
+    both sides) turns ``อื่นๆอาจ`` into ``อื่น ๆ อาจ`` and leaves an already
+    correct ``อื่น ๆ อาจ`` alone, instead of pushing it out a space per run.
+    Replacements have to be idempotent — the same transcript gets repaired more
+    than once in practice, and a rule that drifts on every pass is a trap.
+
+    A ``correct`` cell that is blank deletes the word, closing up behind it so
+    the deletion cannot leave a double space in the middle of a line.
+
+    Longest pattern first, so ``ๆๆ`` is settled before ``ๆ`` gets a look.
+    """
+    if replacements is None:
+        replacements = default_replacements()
+    changes: list[Change] = []
+
+    for wrong in sorted(replacements, key=len, reverse=True):
+        correct = replacements[wrong]
+        body = correct.strip(" \t")
+        cursor = 0
+        while True:
+            idx = text.find(wrong, cursor)
+            if idx < 0:
+                break
+            end = idx + len(wrong)
+            prev = text[idx - 1] if idx else ""
+            nxt = text[end] if end < len(text) else ""
+
+            if not body:
+                # A deletion.  Eat one of the two spaces that would otherwise
+                # be left facing each other.
+                replacement = ""
+                if prev == " " and nxt == " ":
+                    end += 1
+            else:
+                lead = " " if correct[:1] == " " and not _is_blank(prev) else ""
+                trail = " " if correct[-1:] == " " and not _is_blank(nxt) else ""
+                replacement = lead + body + trail
+
+            settled = idx + len(replacement)
+            if replacement and text[idx:settled] == replacement:
+                # Already in the shape the corpus wants: no change, and no
+                # report row.  Compared against the whole replacement rather
+                # than just the matched span, because a pattern can survive
+                # inside its own output — ``สจล`` is still there in ``สจล.``,
+                # and matching the span alone would append a dot per run.
+                cursor = settled
+                continue
+
+            line, col = _line_col(text, idx)
+            changes.append(
+                Change(line, col, text[idx:end], replacement, "override", "replace")
+            )
+            text = text[:idx] + replacement + text[end:]
+            cursor = idx + len(replacement)
+    return text, changes
+
+
 def _thai_run(text: str, lo: int, hi: int) -> tuple[int, int]:
     """Widen ``[lo, hi)`` over adjacent Thai letters, for reporting context."""
     while lo > 0 and is_thai_letter(text[lo - 1]):
@@ -289,8 +412,11 @@ def join_split_words(text: str, lexicon: Lexicon) -> tuple[str, list[Change]]:
     def analyse(fragment: str) -> tuple[bool, int]:
         """Whether ``fragment`` reads as known words, and how many it takes."""
         if fragment not in stats:
-            tokens = word_tokens(fragment)
-            stats[fragment] = (all(t in lexicon for t in tokens), len(tokens))
+            if _is_yamok(fragment):
+                stats[fragment] = (True, 1)
+            else:
+                tokens = word_tokens(fragment)
+                stats[fragment] = (all(t in lexicon for t in tokens), len(tokens))
         return stats[fragment]
 
     def is_readable(fragment: str) -> bool:
@@ -322,6 +448,13 @@ def join_split_words(text: str, lexicon: Lexicon) -> tuple[str, list[Change]]:
                 for start in range(orphan - size + 1, orphan + 1):
                     stop = start + size
                     if start < 0 or stop > count or any(taken[start:stop]):
+                        continue
+                    if any(_is_yamok(f) for f in fragments[start:stop]):
+                        # ไม้ยมก is a mark in its own right and the space before
+                        # it is correct Thai, not ASR damage.  The lexicon
+                        # disagrees — it holds จริงๆ and ต่างๆ as single entries
+                        # but not ๆ — so without this the pass "mends" อื่น ๆ
+                        # into อื่นๆ and undoes the spacing the corpus asks for.
                         continue
                     joined = "".join(fragments[start:stop])
                     readable, joined_tokens = analyse(joined)
@@ -376,8 +509,14 @@ def join_split_words(text: str, lexicon: Lexicon) -> tuple[str, list[Change]]:
 
 
 def is_overspaced(line: str) -> bool:
-    """True when a line was emitted with a space between nearly every token."""
-    fragments = _FRAGMENT_RE.findall(line)
+    """True when a line was emitted with a space between nearly every token.
+
+    ไม้ยมก does not count as a fragment.  It is one character standing on its
+    own by design, so a line with several of them drags the mean under the
+    threshold and a correctly spaced line reads as damaged — which is how this
+    pass used to undo the spacing the replacement corpus had just put in.
+    """
+    fragments = [f for f in _FRAGMENT_RE.findall(line) if not _is_yamok(f)]
     if len(fragments) < OVERSPACED_MIN_FRAGMENTS:
         return False
     mean = sum(len(fragment) for fragment in fragments) / len(fragments)
@@ -680,6 +819,8 @@ def repair_text(
     do_collapse_spaces: bool = True,
     do_yamok: bool = True,
     yamok_words: Lexicon | None = None,
+    do_replace: bool = True,
+    replacements: dict[str, str] | None = None,
 ) -> tuple[str, list[Change]]:
     """Repair ``text`` and return the result plus a log of every decision.
 
@@ -721,6 +862,14 @@ def repair_text(
     if do_collapse_spaces:
         text, collapse_changes = collapse_overspaced_lines(text)
         changes.extend(collapse_changes)
+
+    # After collapsing, for the same reason as the yamok pass below: the spacing
+    # a replacement asks for sits between Thai letters, which is exactly what
+    # collapsing takes out.  Before the yamok pass, so the ๆ this inserts and
+    # the ๆ that one inserts are never each other's input.
+    if do_replace:
+        text, replace_changes = apply_replacements(text, replacements)
+        changes.extend(replace_changes)
 
     # After collapsing, which strips single spaces between Thai letters and
     # would eat the ones ๆ needs — and which is also what turns the ASR's

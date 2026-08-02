@@ -3,6 +3,7 @@
 from .repair import (
     Change,
     load_overrides,
+    load_replacements,
     load_yamok_words,
     repair_text,
     report_csv,
@@ -12,6 +13,7 @@ from .repair import (
 __all__ = [
     "Change",
     "load_overrides",
+    "load_replacements",
     "load_yamok_words",
     "repair_text",
     "report_csv",
