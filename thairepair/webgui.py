@@ -72,6 +72,7 @@ def repair_upload(raw: bytes, params: Mapping[str, list[str]]) -> dict[str, Any]
         do_normalize=_flag(params, "normalize", True),
         do_join_words=_flag(params, "join_words", True),
         do_collapse_spaces=_flag(params, "collapse_spaces", True),
+        do_yamok=_flag(params, "yamok", True),
         do_space_numbers=_flag(params, "space_numbers", True),
     )
 

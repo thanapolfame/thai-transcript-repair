@@ -60,11 +60,12 @@ without losing the output.
 
 | flag | effect |
 | --- | --- |
-| `--words FILE` | curated `correct,wrong` pairs (default `resource/word.csv`) |
+| `--words FILE` | curated `wrong,correct` pairs (default `resource/word.csv`) |
 | `--aggressive` | also repair digits touching Thai on **one** side; will fire on legitimate unspaced text like `45บาท`, so review every hit |
 | `--no-normalize` | skip tone-mark / duplicate-vowel normalization of the input |
 | `--no-join-words` | leave words the ASR split across spaces (`ประสบการ ณ ์`) |
 | `--no-collapse-spaces` | keep the token spacing on lines spaced between every word |
+| `--no-yamok` | leave a repeated word spelled out instead of folding it to ๆ (`เร็วเร็ว` → `เร็ว ๆ`) |
 | `--no-space-numbers` | leave genuine numbers flush against Thai text (`ได้18ท่าน`) |
 
 ## How it works
@@ -112,6 +113,34 @@ Thai runs average under 7 characters — on a real transcript the two population
 separate cleanly, over-spaced lines topping out at a mean of 5.7 and ordinary
 lines starting at 13.1. The test is per line, so lines that were already fine
 keep their phrase breaks, and double spaces are never closed anywhere.
+
+Third, a **repeated word** is written the way Thai writes one, with ไม้ยมก:
+`เขาวิ่งเร็วเร็วมาก` -> `เขาวิ่งเร็ว ๆ มาก`. The ASR spells the repetition out
+because that is what it heard.
+
+The hard part is not finding the repeat, it is knowing what it means. On a real
+transcript most doubled words are the speaker restarting — `ไม่ไม่`, `มันมัน`,
+`อนุมัติอนุมัติ` — and `ที่ที่เขาไป` is a noun plus a relativizer, two different
+words that happen to be spelled alike. Nothing in the string tells those apart
+from `เร็วเร็ว`, so the gate is a list: the adjectives, adverbs and quantifiers
+Thai actually reduplicates, and nothing else is folded. Two further rules fall
+out of the same evidence — the
+repeat has to be a boundary the tokenizer agrees with, so `นานาชาติ` is never
+touched, and there have to be **exactly two** copies, because a third is a
+stutter (`ไม่ไม่ไม่`, `จะจะจะจะ`). Terms of address are left out for that
+reason too: `ท่าน ๆ` is good Thai, but every `ท่านท่าน` on the sample
+transcript runs straight into a name.
+
+On the 1,900-line sample this fires 73 times across 18 distinct words, all of
+them real.
+
+The list comes from two places: a seed in `thairepair/repair.py` (`YAMOK_WORDS`,
+so the library still works without the resource tree) and
+`resource/word-yamok.csv`, one word per row under a `yamok` header. The file
+**extends** the seed rather than replacing it, so curating it is purely
+additive, and it is re-read per run — no restart to pick up an edit. Adding a
+row there is the intended way to tune this when a genuine reduplication comes
+through untouched.
 
 Before the digit tier there is one more repair: **stranded magnitude words**.
 The ITN step sometimes converted the tail of a numeral but not its head, leaving

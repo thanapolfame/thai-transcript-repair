@@ -17,6 +17,7 @@ from .lexicon import (
     default_lexicon,
     is_thai_letter,
     oov_count,
+    spaced_word_tokens,
     token_span,
     word_tokens,
 )
@@ -71,6 +72,55 @@ OVERSPACED_MEAN_FRAGMENT = 7.0
 OVERSPACED_MIN_FRAGMENTS = 8
 
 CONFIDENCES: tuple[str, ...] = ("override", "high", "ambiguous", "unresolved")
+
+#: ไม้ยมก, the repetition mark.  Thai typography sets it off with a space on
+#: each side, which is why the replacement is " ๆ " and not a bare character.
+YAMOK = "ๆ"
+
+#: The curated word list, alongside the other ``resource/`` corpora.
+DEFAULT_YAMOK = Path(__file__).parent.parent / "resource" / "word-yamok.csv"
+
+#: A stretch of Thai fragments separated by at most one space — the unit the
+#: yamok pass works in.  A double space ends the run, so a repetition is never
+#: read across a phrase break, the same rule ``_PHRASE_RE`` follows.
+_YAMOK_RUN_RE = re.compile(f"[{THAI_LETTER}]+(?:[ \t][{THAI_LETTER}]+)*")
+
+#: Words Thai actually reduplicates, and the only ones folded to ``ๆ``.
+#:
+#: An allow list, not a deny list, because on a real transcript a doubled word
+#: is usually a *disfluency* and not a reduplication — ``ไม่ไม่``, ``มันมัน``,
+#: ``อนุมัติอนุมัติ`` are the speaker restarting, and ``ที่ที่เขาไป`` is two
+#: grammatically distinct ที่.  Nothing about the string distinguishes those
+#: from ``เร็วเร็ว``, so the discrimination has to be lexical.  Reduplication is
+#: a closed enough habit for that to work: adjectives and adverbs of degree,
+#: plus the handful of person nouns that take ``ๆ`` as a plural.
+#:
+#: ``resource/word-yamok.csv`` extends this; see ``default_yamok_words()``.  The
+#: seed stays in code so the library still works without the resource tree, and
+#: so a curated word is never lost to a mis-saved CSV.
+YAMOK_WORDS: frozenset[str] = frozenset(
+    {
+        # adjectives and adverbs — the bulk of it
+        "จริง", "เร็ว", "ช้า", "ง่าย", "ดี", "ใหญ่", "เล็ก", "บ่อย", "เรื่อย",
+        "ค่อย", "ชัด", "ใกล้", "ไกล", "สั้น", "ยาว", "บาง", "หนา", "ร้อน",
+        "เย็น", "สด", "ใหม่", "เก่า", "แรง", "เบา", "ดัง", "นาน", "มาก",
+        "น้อย", "ลึก", "สูง", "ต่ำ", "กว้าง", "แคบ", "หนัก", "สวย", "อร่อย",
+        "เผ็ด", "หวาน", "เค็ม", "ถูก", "แพง", "ว่าง", "เต็ม", "กลม", "แบน",
+        "ตรง", "ลับ", "เงียบ", "ดึก", "เช้า", "สาย", "อ่อน", "แข็ง", "สนุก",
+        "เศร้า", "ดิบ", "สุก", "กระชับ",
+        # quantifiers
+        "ต่าง", "อื่น", "หลาย",
+        # person nouns, where ๆ reads as a plural
+        "เด็ก", "เพื่อน", "คน", "ลูก",
+    }
+)
+
+# ท่าน, พี่, น้อง and เดี๋ยว are kept out on purpose, even though ``ท่าน ๆ`` and
+# ``พี่ ๆ`` are perfectly good Thai.  They are terms of address and discourse
+# markers, so they sit turn-initially, right where a speaker restarts: every
+# double of them in the sample transcript is a stutter running into a name —
+# ``ท่านท่านธงชัย``, ``พี่พี่วณัฐ``, ``เดี๋ยวเดี๋ยวก่อน``.  A missed ``ๆ`` is a
+# spelling the speaker would recognize; a wrong one puts words in their mouth.
 
 #: A maximal stretch of Thai letters and digits — i.e. one candidate word,
 #: never spanning whitespace.
@@ -140,7 +190,11 @@ def normalize_words(text: str) -> tuple[str, list[Change]]:
 
 
 def load_overrides(path: Path) -> dict[str, str]:
-    """Read ``wrong -> correct`` pairs from a ``correct,wrong`` CSV."""
+    """Read ``wrong -> correct`` pairs from a ``wrong,correct`` CSV.
+
+    Rows are read by header name, not position, so the column order in the
+    file is free to change as long as the header keeps both names.
+    """
     overrides: dict[str, str] = {}
     with open(path, encoding="utf-8-sig", newline="") as fh:
         reader = csv.DictReader(fh)
@@ -150,6 +204,33 @@ def load_overrides(path: Path) -> dict[str, str]:
             if correct and wrong and correct != wrong:
                 overrides[wrong] = correct
     return overrides
+
+
+def load_yamok_words(path: Path) -> frozenset[str]:
+    """Read reduplicable words from a one-column ``yamok`` CSV.
+
+    Read by header name like ``load_overrides``, so the file is free to grow
+    columns (a note, a source) without this having to care.
+    """
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        return frozenset(
+            word
+            for row in csv.DictReader(fh)
+            if (word := (row.get("yamok") or "").strip())
+        )
+
+
+def default_yamok_words() -> frozenset[str]:
+    """``YAMOK_WORDS`` plus whatever ``resource/word-yamok.csv`` adds.
+
+    The file extends the built-in seed rather than replacing it, so curating it
+    is purely additive: a word put there is folded, and one left out keeps
+    whatever the seed already decided.  Deliberately uncached — the GUI picks up
+    an edit on the next upload, the same way ``word.csv`` does.
+    """
+    if not DEFAULT_YAMOK.exists():
+        return YAMOK_WORDS
+    return YAMOK_WORDS | load_yamok_words(DEFAULT_YAMOK)
 
 
 def _line_col(text: str, offset: int) -> tuple[int, int]:
@@ -321,6 +402,92 @@ def collapse_overspaced_lines(text: str) -> tuple[str, list[Change]]:
             changes.append(Change(index + 1, 1, line, collapsed, "high", "collapse"))
             lines[index] = collapsed
     return "\n".join(lines), changes
+
+
+def mark_reduplication(
+    text: str, yamok_words: Lexicon | None = None
+) -> tuple[str, list[Change]]:
+    """Write a repeated word the way Thai spells it, with ไม้ยมก.
+
+    ``เร็วเร็ว`` -> ``เร็ว ๆ``, and ``เขาวิ่งเร็วเร็วมาก`` -> ``เขาวิ่งเร็ว ๆ มาก``.
+    The ASR spells the repetition out because that is what it heard; ``ๆ`` is
+    how it is written.
+
+    Three bars, because on real transcripts most doubled words are disfluencies:
+
+    - The repeat has to be a **token** boundary the segmenter agrees with, so
+      ``นานาชาติ`` is one word and never becomes ``นา ๆ ชาติ``.
+    - The word has to be in ``yamok_words``, which defaults to the seed plus
+      ``resource/word-yamok.csv``.  See ``YAMOK_WORDS`` for why the gate is
+      lexical and not a rule.
+    - There have to be **exactly two** copies.  A speaker who says a word three
+      times is stalling, not reduplicating: ``ไม่ไม่ไม่`` and ``จะจะจะจะ`` are
+      what a third copy looks like in practice, so it is left as spoken.
+
+    A single space between the two copies is accepted (``เร็ว เร็ว``); a double
+    space is a phrase break and ends the run.  The space that follows ``ๆ`` is
+    added only when Thai text continues on the same run, so a repetition at the
+    end of a line does not leave trailing whitespace behind.
+    """
+    if yamok_words is None:
+        yamok_words = default_yamok_words()
+    changes: list[Change] = []
+    out: list[str] = []
+    pos = 0
+
+    for run in _YAMOK_RUN_RE.finditer(text):
+        body = run.group()
+        tokens = spaced_word_tokens(body)
+        if "".join(tokens) != body:
+            # The segmenter is lossless on this input, so this cannot normally
+            # happen — but rebuilding a run out of pieces that do not add up
+            # would corrupt the text, so bail rather than guess.
+            continue
+
+        spans: list[tuple[int, int]] = []
+        offset = 0
+        for token in tokens:
+            if not token.isspace():
+                spans.append((offset, offset + len(token)))
+            offset += len(token)
+
+        parts: list[str] = []
+        cursor = 0
+        index = 0
+        while index < len(spans):
+            start, end = spans[index]
+            word = body[start:end]
+            stop = index + 1
+            while stop < len(spans) and body[spans[stop][0] : spans[stop][1]] == word:
+                stop += 1
+            if stop - index != 2 or word not in yamok_words:
+                # Step over the whole group, not one copy of it: a run of three
+                # must not be read as a rejected single plus an accepted pair.
+                index = stop
+                continue
+            last = spans[stop - 1][1]
+            folded = f"{word} {YAMOK}"
+            # ๆ takes a space on the far side too, but only when Thai text
+            # actually follows it and is not already spaced off.
+            pad = " " if last < len(body) and not body[last].isspace() else ""
+            line, col = _line_col(text, run.start() + start)
+            changes.append(
+                Change(line, col, body[start:last], folded, "high", "yamok")
+            )
+            parts.append(body[cursor:start])
+            parts.append(folded + pad)
+            cursor = last
+            index = stop
+
+        if not parts:
+            continue
+        parts.append(body[cursor:])
+        out.append(text[pos : run.start()])
+        out.append("".join(parts))
+        pos = run.end()
+
+    out.append(text[pos:])
+    return "".join(out), changes
 
 
 def join_magnitude_words(text: str) -> tuple[str, list[Change]]:
@@ -511,6 +678,8 @@ def repair_text(
     do_space_numbers: bool = True,
     do_join_words: bool = True,
     do_collapse_spaces: bool = True,
+    do_yamok: bool = True,
+    yamok_words: Lexicon | None = None,
 ) -> tuple[str, list[Change]]:
     """Repair ``text`` and return the result plus a log of every decision.
 
@@ -552,6 +721,13 @@ def repair_text(
     if do_collapse_spaces:
         text, collapse_changes = collapse_overspaced_lines(text)
         changes.extend(collapse_changes)
+
+    # After collapsing, which strips single spaces between Thai letters and
+    # would eat the ones ๆ needs — and which is also what turns the ASR's
+    # "เร็ว เร็ว" into a repeat this pass can see.
+    if do_yamok:
+        text, yamok_changes = mark_reduplication(text, yamok_words)
+        changes.extend(yamok_changes)
 
     if do_space_numbers:
         text, spacing_changes = space_numbers(text)

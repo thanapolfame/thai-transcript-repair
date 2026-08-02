@@ -4,7 +4,7 @@ from typing import Any
 
 import pytest
 
-from thairepair import load_overrides, repair_text
+from thairepair import load_overrides, load_yamok_words, repair_text
 from thairepair.numbers import readings
 
 WORDS_CSV = Path(__file__).parent.parent / "resource" / "word.csv"
@@ -267,6 +267,74 @@ def test_collapse_is_reported_and_can_be_switched_off() -> None:
     assert fix(OVERSPACED, do_collapse_spaces=False) == OVERSPACED
 
 
+# --- a repeated word is spelled ๆ -------------------------------------------
+
+
+def test_folds_a_doubled_word_to_yamok() -> None:
+    assert fix("เร็วเร็ว") == "เร็ว ๆ"
+
+
+def test_yamok_gets_a_space_on_both_sides_mid_sentence() -> None:
+    assert fix("เขาวิ่งเร็วเร็วมาก") == "เขาวิ่งเร็ว ๆ มาก"
+
+
+def test_a_space_between_the_copies_is_still_a_repeat() -> None:
+    assert fix("เขา วิ่ง เร็ว เร็ว มาก") == "เขา วิ่ง เร็ว ๆ มาก"
+
+
+def test_a_third_copy_is_a_stutter_and_is_left_as_spoken() -> None:
+    assert fix("เร็วเร็วเร็ว") == "เร็วเร็วเร็ว"
+
+
+def test_repetition_is_not_read_across_a_phrase_break() -> None:
+    assert fix("เร็ว  เร็ว") == "เร็ว  เร็ว"
+
+
+def test_a_word_that_merely_contains_a_doubled_syllable_is_left_alone() -> None:
+    assert fix("นานาชาติ") == "นานาชาติ"
+
+
+def test_function_words_are_not_reduplicated() -> None:
+    """``ที่ที่`` is a noun plus a relativizer, not one word said twice."""
+    assert fix("ที่ที่เขาไป") == "ที่ที่เขาไป"
+
+
+def test_a_repeated_word_that_is_a_disfluency_is_left_as_spoken() -> None:
+    for stutter in ("ผมผมคิดว่า", "มันมันเป็นแบบนี้", "อนุมัติอนุมัติแล้ว"):
+        assert fix(stutter) == stutter
+
+
+def test_yamok_is_reported_and_can_be_switched_off() -> None:
+    fixed, changes = repair_text("เขาวิ่งเร็วเร็วมาก")
+    assert fixed == "เขาวิ่งเร็ว ๆ มาก"
+    assert [(c.rule, c.before, c.after) for c in changes] == [
+        ("yamok", "เร็วเร็ว", "เร็ว ๆ")
+    ]
+    assert fix("เขาวิ่งเร็วเร็วมาก", do_yamok=False) == "เขาวิ่งเร็วเร็วมาก"
+
+
+def test_an_existing_yamok_is_left_alone() -> None:
+    assert fix("เร็ว ๆ") == "เร็ว ๆ"
+
+
+def test_the_curated_list_is_read_from_the_resource_file() -> None:
+    from thairepair.repair import DEFAULT_YAMOK, YAMOK_WORDS, default_yamok_words
+
+    assert load_yamok_words(DEFAULT_YAMOK) <= default_yamok_words()
+    # The file extends the seed; nothing curated in code is lost by editing it.
+    assert YAMOK_WORDS <= default_yamok_words()
+
+
+def test_a_word_only_in_the_file_is_folded(tmp_path: Path) -> None:
+    """A word absent from the seed still folds once the CSV names it."""
+    assert fix("เขาพูดกลอกกลอกดี") == "เขาพูดกลอกกลอกดี"
+    extra = tmp_path / "word-yamok.csv"
+    extra.write_text("yamok\nกลอก\n", encoding="utf-8")
+    words = load_yamok_words(extra)
+    assert words == {"กลอก"}
+    assert fix("เขาพูดกลอกกลอกดี", yamok_words=words) == "เขาพูดกลอก ๆ ดี"
+
+
 # --- magnitude words the ITN step left stranded -----------------------------
 
 
@@ -422,6 +490,13 @@ def test_override_beats_the_lexicon() -> None:
 
 def test_load_overrides_maps_wrong_to_correct() -> None:
     assert load_overrides(WORDS_CSV)["เ4ยง"] == "เสี่ยง"
+
+
+def test_load_overrides_reads_by_header_not_column_order(tmp_path: Path) -> None:
+    """Either column order works; the header names are what the reader keys on."""
+    swapped = tmp_path / "swapped.csv"
+    swapped.write_text("correct,wrong\nเสี่ยง,เ4ยง\n", encoding="utf-8")
+    assert load_overrides(swapped) == {"เ4ยง": "เสี่ยง"}
 
 
 # --- digit readings ---------------------------------------------------------

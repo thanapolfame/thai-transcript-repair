@@ -32,7 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--words",
         type=Path,
         default=DEFAULT_WORDS,
-        help=f"curated correct,wrong pairs (default: {DEFAULT_WORDS})",
+        help=f"curated wrong,correct pairs (default: {DEFAULT_WORDS})",
     )
     parser.add_argument(
         "--aggressive",
@@ -53,6 +53,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--no-collapse-spaces",
         action="store_true",
         help="keep the token spacing on lines that have a space between every word",
+    )
+    parser.add_argument(
+        "--no-yamok",
+        action="store_true",
+        help="leave a repeated word spelled out instead of folding it to ๆ (เร็วเร็ว)",
     )
     parser.add_argument(
         "--no-space-numbers",
@@ -76,6 +81,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     no_space_numbers: bool = args.no_space_numbers
     no_join_words: bool = args.no_join_words
     no_collapse_spaces: bool = args.no_collapse_spaces
+    no_yamok: bool = args.no_yamok
 
     text = sys.stdin.read() if str(input_path) == "-" else input_path.read_text("utf-8")
     overrides: dict[str, str] = (
@@ -90,6 +96,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         do_space_numbers=not no_space_numbers,
         do_join_words=not no_join_words,
         do_collapse_spaces=not no_collapse_spaces,
+        do_yamok=not no_yamok,
     )
 
     if output_path:

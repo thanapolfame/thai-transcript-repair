@@ -142,10 +142,19 @@ def word_tokens(text: str) -> list[str]:
     return word_tokenize(text, engine="newmm")
 
 
+def spaced_word_tokens(text: str) -> list[str]:
+    """Segment ``text`` into words, keeping whitespace as tokens of its own.
+
+    Lossless: the pieces concatenate back to ``text``, which is what lets a
+    caller rebuild the string from them instead of computing offsets by hand.
+    """
+    return word_tokenize(text, engine="newmm", keep_whitespace=True)
+
+
 def _token_spans(text: str) -> list[tuple[int, int]]:
     spans: list[tuple[int, int]] = []
     pos = 0
-    for token in word_tokenize(text, engine="newmm", keep_whitespace=True):
+    for token in spaced_word_tokens(text):
         spans.append((pos, pos + len(token)))
         pos += len(token)
     return spans
