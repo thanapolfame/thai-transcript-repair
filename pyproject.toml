@@ -1,5 +1,5 @@
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.13"
 files = ["repair.py", "thairepair", "tests"]
 
 # Strict is the project standard: every function annotated, no implicit Any,

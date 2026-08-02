@@ -4,13 +4,11 @@
     ./repair.py transcript.txt -o fixed.txt --report report.csv
 """
 
-from __future__ import annotations
-
 import argparse
 import sys
 from collections import Counter
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
 
 from thairepair import Change, load_overrides, repair_text, write_report
 
@@ -64,15 +62,15 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def main(argv: Optional[Sequence[str]] = None) -> int:
+def main(argv: Sequence[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
 
     # argparse hands back a Namespace of Any, so the types are pinned here, at
     # the boundary — everything downstream is checked.
     input_path: Path = args.input
-    output_path: Optional[Path] = args.output
-    report_path: Optional[Path] = args.report
-    words_path: Optional[Path] = args.words
+    output_path: Path | None = args.output
+    report_path: Path | None = args.report
+    words_path: Path | None = args.words
     aggressive: bool = args.aggressive
     no_normalize: bool = args.no_normalize
     no_space_numbers: bool = args.no_space_numbers
@@ -80,7 +78,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     no_collapse_spaces: bool = args.no_collapse_spaces
 
     text = sys.stdin.read() if str(input_path) == "-" else input_path.read_text("utf-8")
-    overrides: Dict[str, str] = (
+    overrides: dict[str, str] = (
         load_overrides(words_path) if words_path and words_path.exists() else {}
     )
 
@@ -114,10 +112,10 @@ def _summarize(changes: Sequence[Change]) -> str:
     Reported by rule, not confidence: "13 digit, 205 spacing" says far more than
     "218 high", since spacing is cosmetic and digit repairs are not.
     """
-    counts: "Counter[str]" = Counter(
+    counts: Counter[str] = Counter(
         change.rule if change.applied else "unresolved" for change in changes
     )
-    parts: List[str] = [f"{n} {name}" for name, n in counts.most_common()]
+    parts: list[str] = [f"{n} {name}" for name, n in counts.most_common()]
     return ", ".join(parts) or "no changes"
 
 

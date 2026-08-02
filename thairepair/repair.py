@@ -1,12 +1,10 @@
 """Repair Thai words whose number-word syllables were rewritten as digits."""
 
-from __future__ import annotations
-
 import csv
 import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence, Tuple
 
 from pythainlp.util import normalize
 
@@ -71,7 +69,7 @@ OVERSPACED_MEAN_FRAGMENT = 7.0
 #: Enough fragments for that mean to carry any weight.
 OVERSPACED_MIN_FRAGMENTS = 8
 
-CONFIDENCES: Tuple[str, ...] = ("override", "high", "ambiguous", "unresolved")
+CONFIDENCES: tuple[str, ...] = ("override", "high", "ambiguous", "unresolved")
 
 #: A maximal stretch of Thai letters and digits — i.e. one candidate word,
 #: never spanning whitespace.
@@ -102,15 +100,15 @@ class Change:
 
 #: A join candidate, ranked by ``(is_lexicon_word, tokens_collapsed, -width)``
 #: and carrying the fragment range it covers plus the joined string.
-_JoinScore = Tuple[bool, int, int]
-_JoinCandidate = Tuple[_JoinScore, int, int, str]
+type _JoinScore = tuple[bool, int, int]
+type _JoinCandidate = tuple[_JoinScore, int, int, str]
 
 #: A digit-repair candidate, ranked by ``(oov_removed, word_len, -reading_rank)``
 #: and carrying the reading tried, the word it landed in, and the patched text.
-_DigitCandidate = Tuple[int, int, int, str, WordMatch, str]
+type _DigitCandidate = tuple[int, int, int, str, WordMatch, str]
 
 
-def normalize_words(text: str) -> Tuple[str, List[Change]]:
+def normalize_words(text: str) -> tuple[str, list[Change]]:
     """Apply PyThaiNLP normalization to each word, leaving layout untouched.
 
     ``pythainlp.util.normalize`` strips and collapses whitespace, which would
@@ -124,8 +122,8 @@ def normalize_words(text: str) -> Tuple[str, List[Change]]:
     a valid syllable.  Dropping it would destroy the only evidence of what the
     word was.
     """
-    changes: List[Change] = []
-    out: List[str] = []
+    changes: list[Change] = []
+    out: list[str] = []
     pos = 0
     for match in _WORD_RUN_RE.finditer(text):
         run = match.group()
@@ -140,9 +138,9 @@ def normalize_words(text: str) -> Tuple[str, List[Change]]:
     return "".join(out), changes
 
 
-def load_overrides(path: Path) -> Dict[str, str]:
+def load_overrides(path: Path) -> dict[str, str]:
     """Read ``wrong -> correct`` pairs from a ``correct,wrong`` CSV."""
-    overrides: Dict[str, str] = {}
+    overrides: dict[str, str] = {}
     with open(path, encoding="utf-8-sig", newline="") as fh:
         reader = csv.DictReader(fh)
         for row in reader:
@@ -153,17 +151,17 @@ def load_overrides(path: Path) -> Dict[str, str]:
     return overrides
 
 
-def _line_col(text: str, offset: int) -> Tuple[int, int]:
+def _line_col(text: str, offset: int) -> tuple[int, int]:
     line = text.count("\n", 0, offset) + 1
     col = offset - (text.rfind("\n", 0, offset) + 1) + 1
     return line, col
 
 
 def _apply_overrides(
-    text: str, overrides: Dict[str, str]
-) -> Tuple[str, List[Change]]:
+    text: str, overrides: dict[str, str]
+) -> tuple[str, list[Change]]:
     """Exact replacements from the curated CSV, longest pattern first."""
-    changes: List[Change] = []
+    changes: list[Change] = []
     for wrong in sorted(overrides, key=len, reverse=True):
         correct = overrides[wrong]
         cursor = 0
@@ -178,7 +176,7 @@ def _apply_overrides(
     return text, changes
 
 
-def _thai_run(text: str, lo: int, hi: int) -> Tuple[int, int]:
+def _thai_run(text: str, lo: int, hi: int) -> tuple[int, int]:
     """Widen ``[lo, hi)`` over adjacent Thai letters, for reporting context."""
     while lo > 0 and is_thai_letter(text[lo - 1]):
         lo -= 1
@@ -187,7 +185,7 @@ def _thai_run(text: str, lo: int, hi: int) -> Tuple[int, int]:
     return lo, hi
 
 
-def join_split_words(text: str, lexicon: Lexicon) -> Tuple[str, List[Change]]:
+def join_split_words(text: str, lexicon: Lexicon) -> tuple[str, list[Change]]:
     """Close up spaces the ASR inserted inside a word.
 
     This output puts a space between nearly every token, and some of those
@@ -204,9 +202,9 @@ def join_split_words(text: str, lexicon: Lexicon) -> Tuple[str, List[Change]]:
     are already fine are never pulled in, so ``เท็จ จริง`` and ``นะ ครับ`` keep
     their spacing.
     """
-    stats: Dict[str, Tuple[bool, int]] = {}
+    stats: dict[str, tuple[bool, int]] = {}
 
-    def analyse(fragment: str) -> Tuple[bool, int]:
+    def analyse(fragment: str) -> tuple[bool, int]:
         """Whether ``fragment`` reads as known words, and how many it takes."""
         if fragment not in stats:
             tokens = word_tokens(fragment)
@@ -216,8 +214,8 @@ def join_split_words(text: str, lexicon: Lexicon) -> Tuple[str, List[Change]]:
     def is_readable(fragment: str) -> bool:
         return analyse(fragment)[0]
 
-    changes: List[Change] = []
-    out: List[str] = []
+    changes: list[Change] = []
+    out: list[str] = []
     pos = 0
 
     for phrase in _PHRASE_RE.finditer(text):
@@ -229,7 +227,7 @@ def join_split_words(text: str, lexicon: Lexicon) -> Tuple[str, List[Change]]:
         ]
         count = len(fragments)
 
-        joins: Dict[int, int] = {}  # start index -> end index of an accepted join
+        joins: dict[int, int] = {}  # start index -> end index of an accepted join
         taken = [False] * count
 
         orphaned = [not is_readable(fragment) for fragment in fragments]
@@ -237,7 +235,7 @@ def join_split_words(text: str, lexicon: Lexicon) -> Tuple[str, List[Change]]:
         for orphan in range(count):
             if taken[orphan] or not orphaned[orphan]:
                 continue
-            best: Optional[_JoinCandidate] = None
+            best: _JoinCandidate | None = None
             for size in range(2, MAX_JOIN_FRAGMENTS + 1):
                 for start in range(orphan - size + 1, orphan + 1):
                     stop = start + size
@@ -278,7 +276,7 @@ def join_split_words(text: str, lexicon: Lexicon) -> Tuple[str, List[Change]]:
             for index in range(best_start, best_stop):
                 taken[index] = True
 
-        parts: List[str] = []
+        parts: list[str] = []
         index = 0
         while index < count:
             stop = joins.get(index, index + 1)
@@ -304,7 +302,7 @@ def is_overspaced(line: str) -> bool:
     return mean < OVERSPACED_MEAN_FRAGMENT
 
 
-def collapse_overspaced_lines(text: str) -> Tuple[str, List[Change]]:
+def collapse_overspaced_lines(text: str) -> tuple[str, list[Change]]:
     """Remove inter-word spaces on lines that have a space between every token.
 
     Thai prose runs words together and uses spaces to break phrases, so these
@@ -312,7 +310,7 @@ def collapse_overspaced_lines(text: str) -> Tuple[str, List[Change]]:
     applied per line, which keeps it away from lines that were already fine —
     their phrase breaks carry meaning and are none of this function's business.
     """
-    changes: List[Change] = []
+    changes: list[Change] = []
     lines = text.split("\n")
     for index, line in enumerate(lines):
         if not is_overspaced(line):
@@ -324,7 +322,7 @@ def collapse_overspaced_lines(text: str) -> Tuple[str, List[Change]]:
     return "\n".join(lines), changes
 
 
-def join_magnitude_words(text: str) -> Tuple[str, List[Change]]:
+def join_magnitude_words(text: str) -> tuple[str, list[Change]]:
     """Fold a leftover Thai magnitude word into the digits it belongs to.
 
     ``มากกว่าพัน 200 ทุน`` -> ``มากกว่า 1,200 ทุน``.  Only the canonical form is
@@ -333,8 +331,8 @@ def join_magnitude_words(text: str) -> Tuple[str, List[Change]]:
     because getting a figure wrong in a budget transcript is worse than leaving
     it as the speaker said it.
     """
-    changes: List[Change] = []
-    out: List[str] = []
+    changes: list[Change] = []
+    out: list[str] = []
     pos = 0
     for match in _MAGNITUDE_RE.finditer(text):
         # Both groups are unconditional in the pattern, so they always matched.
@@ -360,7 +358,7 @@ def join_magnitude_words(text: str) -> Tuple[str, List[Change]]:
     return "".join(out), changes
 
 
-def space_numbers(text: str) -> Tuple[str, List[Change]]:
+def space_numbers(text: str) -> tuple[str, list[Change]]:
     """Separate genuine numbers from the Thai text they are flush against.
 
     Run after repair, so every digit still standing is a real number.  Only
@@ -368,8 +366,8 @@ def space_numbers(text: str) -> Tuple[str, List[Change]]:
     decimals (``5.2``), ratios (``1/12``), percentages (``18%10``) and Latin
     tokens (``part2.m4a``) exactly as they were.
     """
-    changes: List[Change] = []
-    out: List[str] = []
+    changes: list[Change] = []
+    out: list[str] = []
     pos = 0
     # Group-separated numbers count as one token, so 1,200 is spaced as a whole
     # rather than as "1" and "200".
@@ -399,7 +397,7 @@ def space_numbers(text: str) -> Tuple[str, List[Change]]:
     return "".join(out), changes
 
 
-def _context_window(text: str, start: int, end: int) -> Tuple[int, int]:
+def _context_window(text: str, start: int, end: int) -> tuple[int, int]:
     """A whitespace-aligned slice around ``[start, end)`` to score segmentation in.
 
     Aligning both edges to whitespace keeps the window comparable before and
@@ -421,9 +419,9 @@ def _context_window(text: str, start: int, end: int) -> Tuple[int, int]:
 
 def _repair_digits(
     text: str, lexicon: Lexicon, aggressive: bool
-) -> Tuple[str, List[Change]]:
+) -> tuple[str, list[Change]]:
     pattern = LOOSE_RE if aggressive else STRICT_RE
-    changes: List[Change] = []
+    changes: list[Change] = []
     cursor = 0
 
     while True:
@@ -442,7 +440,7 @@ def _repair_digits(
         # segmentation defect: genuine numbers such as "ได้ 18 ท่าน" already sit
         # between well-formed words, so spelling them out improves nothing and
         # they are left alone.
-        candidates: List[_DigitCandidate] = []
+        candidates: list[_DigitCandidate] = []
         for rank, reading in enumerate(readings(digits)):
             patched = text[:start] + reading + text[end:]
             stop = start + len(reading)
@@ -505,14 +503,14 @@ def _repair_digits(
 
 def repair_text(
     text: str,
-    overrides: Optional[Dict[str, str]] = None,
-    lexicon: Optional[Lexicon] = None,
+    overrides: dict[str, str] | None = None,
+    lexicon: Lexicon | None = None,
     aggressive: bool = False,
     do_normalize: bool = True,
     do_space_numbers: bool = True,
     do_join_words: bool = True,
     do_collapse_spaces: bool = True,
-) -> Tuple[str, List[Change]]:
+) -> tuple[str, list[Change]]:
     """Repair ``text`` and return the result plus a log of every decision.
 
     Tiers are applied in order of trust: the curated CSV wins outright, then
@@ -521,7 +519,7 @@ def repair_text(
 
     Spacing runs last, once the surviving digits are known to be real numbers.
     """
-    changes: List[Change] = []
+    changes: list[Change] = []
     if do_normalize:
         # ASR output often has reordered tone marks or duplicated vowels, which
         # would make otherwise-correct candidates miss in the lexicon.

@@ -1,6 +1,6 @@
 import csv
 from pathlib import Path
-from typing import Any, List, Tuple
+from typing import Any
 
 import pytest
 
@@ -17,7 +17,7 @@ def fix(text: str, **kwargs: Any) -> str:
 # --- resource/word.csv is the regression suite ------------------------------
 
 
-def pairs() -> List[Tuple[str, str]]:
+def pairs() -> list[tuple[str, str]]:
     with open(WORDS_CSV, encoding="utf-8-sig", newline="") as fh:
         return [(row["correct"], row["wrong"]) for row in csv.DictReader(fh)]
 

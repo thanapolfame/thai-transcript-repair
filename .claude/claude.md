@@ -24,10 +24,10 @@ do not relax a setting to make an error go away.
 - **Annotate every function**, including tests, private helpers and nested
   closures. `-> None` on a test is not noise; it is what keeps the test file
   inside the type-checked set.
-- **Annotate every empty container** at its assignment: `out: List[str] = []`,
-  `changes: List[Change] = []`. Mypy cannot infer from a later `append`.
-- **Annotate accumulators that start as `None`**: `best: Optional[_JoinCandidate]
-  = None`. If the resulting type is a wide tuple, give it a module-level alias
+- **Annotate every empty container** at its assignment: `out: list[str] = []`,
+  `changes: list[Change] = []`. Mypy cannot infer from a later `append`.
+- **Annotate accumulators that start as `None`**: `best: _JoinCandidate | None =
+  None`. If the resulting type is a wide tuple, give it a module-level alias
   (`_JoinCandidate`, `_DigitCandidate` in `thairepair/repair.py`) rather than
   repeating it — the alias is also where you document what the tuple ranks by.
 - **Pin `Any` at the boundary, never let it spread.** Untyped sources — argparse
@@ -40,20 +40,30 @@ do not relax a setting to make an error go away.
   the build.
 - **Read-only set parameters take `Lexicon`** (`AbstractSet[str]`, defined in
   `thairepair/lexicon.py`); `default_lexicon()` returns a `frozenset`. The
-  lexicon is cached and shared by every pass, so a mutable `Set[str]` in a
+  lexicon is cached and shared by every pass, so a mutable `set[str]` in a
   signature is a bug waiting to happen.
 
 ### Python version
 
-Runtime is **3.9** and `python_version = "3.9"` is pinned in the mypy config.
-So:
+Runtime is **3.13** (Homebrew `python@3.13`) and `python_version = "3.13"` is
+pinned in the mypy config. Write modern annotations:
 
-- Every module starts with `from __future__ import annotations`, which is what
-  makes forward references work without quoting.
-- Use `typing.List` / `Dict` / `Tuple` / `Optional`, not `list[str]` or
-  `str | None`. The `__future__` import would let the builtin generics past the
-  parser in annotations, but they still break in any evaluated position, so the
-  project keeps one spelling everywhere.
+- **Builtin generics and `|`**: `list[str]`, `dict[str, str]`,
+  `tuple[int, int]`, `str | None`. Never `typing.List` / `Optional[...]` — the
+  `typing` aliases are deprecated and this project has none left.
+- **`collections.abc` for protocols**: `Sequence`, `Iterator`, `Set as
+  AbstractSet`. `typing` is now only for things with no abc equivalent —
+  `NamedTuple`, `Any`.
+- **`type` statements for aliases** (PEP 695): `type Lexicon = AbstractSet[str]`,
+  `type _DigitCandidate = tuple[...]`. They are lazily evaluated, so an alias
+  may reference something defined later in the module.
+- **No `from __future__ import annotations`.** Annotations are evaluated at
+  runtime, so a name must exist before it is used in a signature — that is why
+  `Change` sits above the functions that return it in `thairepair/repair.py`.
+  Order the module rather than reaching for string forward references.
+
+If you bump the runtime again, `python_version` in `pyproject.toml`, the version
+in the README's Usage section, and this section all have to move together.
 
 ## Testing
 

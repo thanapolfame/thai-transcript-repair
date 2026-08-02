@@ -1,10 +1,9 @@
 """Thai lexicon lookups used to decide whether a repair produced a real word."""
 
-from __future__ import annotations
-
 import re
+from collections.abc import Set as AbstractSet
 from functools import lru_cache
-from typing import AbstractSet, FrozenSet, List, NamedTuple, Optional, Tuple
+from typing import NamedTuple
 
 from pythainlp.corpus import thai_words
 from pythainlp.tokenize import word_tokenize
@@ -22,7 +21,7 @@ MAX_WORD_LEN = 24
 #: A lexicon is read-only everywhere it is passed, so it travels as an
 #: ``AbstractSet`` and is built as a ``frozenset``: the default one is cached
 #: and handed to every pass, and a shared mutable set would be a trap.
-Lexicon = AbstractSet[str]
+type Lexicon = AbstractSet[str]
 
 
 def is_thai_letter(ch: str) -> bool:
@@ -30,7 +29,7 @@ def is_thai_letter(ch: str) -> bool:
 
 
 @lru_cache(maxsize=1)
-def default_lexicon() -> FrozenSet[str]:
+def default_lexicon() -> frozenset[str]:
     """The PyThaiNLP word list (~62k entries), loaded once."""
     return frozenset(thai_words())
 
@@ -55,9 +54,9 @@ class WordMatch(NamedTuple):
     word: str
 
 
-def _left_indices(text: str, lo: int) -> List[int]:
+def _left_indices(text: str, lo: int) -> list[int]:
     """Indices of word characters running leftwards from ``lo``, ascending."""
-    indices: List[int] = []
+    indices: list[int] = []
     gaps = 0
     i = lo - 1
     while i >= 0 and len(indices) < MAX_WORD_LEN:
@@ -78,9 +77,9 @@ def _left_indices(text: str, lo: int) -> List[int]:
     return indices
 
 
-def _right_indices(text: str, hi: int) -> List[int]:
+def _right_indices(text: str, hi: int) -> list[int]:
     """Indices of word characters running rightwards from ``hi``, ascending."""
-    indices: List[int] = []
+    indices: list[int] = []
     gaps = 0
     i = hi
     while i < len(text) and len(indices) < MAX_WORD_LEN:
@@ -102,7 +101,7 @@ def _right_indices(text: str, hi: int) -> List[int]:
 
 def covering_word(
     text: str, lo: int, hi: int, lexicon: Lexicon
-) -> Optional[WordMatch]:
+) -> WordMatch | None:
     """Find the longest lexicon word around ``[lo, hi)`` that fully contains it.
 
     Boundaries extend across Thai letters and, at most twice, across a single
@@ -117,9 +116,9 @@ def covering_word(
     left = _left_indices(text, lo)
     right = _right_indices(text, hi)
 
-    best: Optional[WordMatch] = None
+    best: WordMatch | None = None
     for take_left in range(len(left) + 1):
-        prefix_idx: List[int] = left[len(left) - take_left :] if take_left else []
+        prefix_idx: list[int] = left[len(left) - take_left :] if take_left else []
         prefix = "".join(text[i] for i in prefix_idx)
         for take_right in range(len(right), -1, -1):
             suffix_idx = right[:take_right]
@@ -138,13 +137,13 @@ def covering_word(
     return best
 
 
-def word_tokens(text: str) -> List[str]:
+def word_tokens(text: str) -> list[str]:
     """Segment ``text`` into words, dropping whitespace."""
     return word_tokenize(text, engine="newmm")
 
 
-def _token_spans(text: str) -> List[Tuple[int, int]]:
-    spans: List[Tuple[int, int]] = []
+def _token_spans(text: str) -> list[tuple[int, int]]:
+    spans: list[tuple[int, int]] = []
     pos = 0
     for token in word_tokenize(text, engine="newmm", keep_whitespace=True):
         spans.append((pos, pos + len(token)))
@@ -167,7 +166,7 @@ def oov_count(text: str, lexicon: Lexicon) -> int:
     )
 
 
-def token_span(text: str, lo: int, hi: int) -> Tuple[int, int]:
+def token_span(text: str, lo: int, hi: int) -> tuple[int, int]:
     """Span of the token(s) that ``[lo, hi)`` falls inside.
 
     Used for reporting: once a repair is applied the text segments cleanly, so

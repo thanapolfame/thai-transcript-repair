@@ -24,8 +24,10 @@ since that is real phrase separation rather than a broken word.
 
 ## Usage
 
+Python 3.13 or newer.
+
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+python3.13 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python repair.py transcript.txt -o fixed.txt --report report.csv
 ```
 
