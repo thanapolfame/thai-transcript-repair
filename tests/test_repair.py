@@ -97,8 +97,12 @@ def test_a_double_space_is_phrase_separation_and_blocks_the_join():
     ],
 )
 def test_normalization_never_deletes_an_orphaned_diacritic(text):
-    """normalize() drops a mark with no base consonant — that is data loss."""
-    assert fix(text) == text
+    """normalize() drops a mark with no base consonant — that is data loss.
+
+    The join pass mends these outright; this pins the weaker guarantee that the
+    mark survives even with joining switched off.
+    """
+    assert fix(text, do_join_words=False) == text
 
 
 # --- what must NOT be touched ----------------------------------------------
@@ -148,6 +152,118 @@ def test_unresolved_digits_are_reported_but_not_edited():
     fixed, changes = repair_text(text, do_space_numbers=False)
     assert fixed == text
     assert [c.confidence for c in changes] == ["unresolved"]
+
+
+# --- words the ASR split across spaces ---------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        ("ได้มี ประสบการ ณ ์ อะไร", "ได้มี ประสบการณ์ อะไร"),
+        ("เป็น บริษั ท นะ", "เป็น บริษัท นะ"),
+        ("งบ ประชาสัม พัน ธ์ เนี่ย", "งบ ประชาสัมพันธ์ เนี่ย"),
+        ("เรื่อง อุทธร ณ ์ ร้อง ทุกข์", "เรื่อง อุทธรณ์ ร้อง ทุกข์"),
+        ("โดย ค ณ ะกรรมการ", "โดย คณะกรรมการ"),
+        ("เวลา พิจาร ณ า เรื่อง", "เวลา พิจารณา เรื่อง"),
+        ("ฉบับ สมบูร ณ ์ แล้ว", "ฉบับ สมบูรณ์ แล้ว"),
+        ("ในปีงบประมา ณ นี้", "ในปีงบประมาณ นี้"),
+        # The space was merely misplaced, so the join has to be re-segmented;
+        # ขอ|ขยายเวลา is a bigger collapse than ขอ|ขยาย, so it wins.
+        ("เป็น ขอข ยาย เวลา", "เป็น ขอขยายเวลา"),
+    ],
+)
+def test_mends_a_word_split_across_spaces(text, expected):
+    assert fix(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # Every fragment already reads as words — ordinary token separation.
+        "ทีนี้ ว่า พอเรา ทำงาน วิจัย",
+        "เนี่ย นะ ครับ มันก็",
+        "เป็น จ้าง เหมา หมดเลย",
+        "ข้อ เท็จ จริงแล้ว นะ คะ",
+        # No reading makes these whole, so nothing is invented.
+        "หมด ห นะ อัน เนี้ย",
+        "เป็น ออร์กา ไน เซอร์ มาจาก",
+    ],
+)
+def test_leaves_ordinary_token_spacing_alone(text):
+    assert fix(text) == text
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "เรื่อง กกต อย่างนั้นเนี่ย",
+        "เดี๋ยวส่งมา กปม และอธิบายพยาน",
+        "ก็ สล บริหารจัดการนอกจากนั้น",
+        "กองทุน รนอ นะครับ",
+        "ทาง อบต บอกว่า",
+    ],
+)
+def test_never_glues_an_acronym_to_its_neighbour(text):
+    """กกต+อย่างนั้น re-segments as กก|ตอ|ย่าง — every piece is a word, but it
+    shredded อย่าง, which was fine before.  Joins must collapse, not shred."""
+    assert fix(text) == text
+
+
+def test_a_double_space_is_never_closed_up():
+    assert fix("ฉบับ สมบูร  ณ ์ แล้ว") == "ฉบับ สมบูร  ณ ์ แล้ว"
+
+
+def test_joins_are_reported_under_their_own_rule():
+    _, changes = repair_text("ได้มี ประสบการ ณ ์ อะไร")
+    assert [(c.rule, c.before, c.after) for c in changes] == [
+        ("join", "ประสบการ ณ ์", "ประสบการณ์")
+    ]
+
+
+# --- lines with a space between every token ---------------------------------
+
+OVERSPACED = "ทีนี้ ว่า พอเรา ทำงาน วิจัย เนี่ย นะ ครับ มันก็ ต้องมา ดูว่า งบ"
+NORMAL = (
+    "ก็คือที่หนึ่งนะครับ ท่านผู้ช่วยศาสตราจารย์ ด็อกเตอร์ รัชนีนะครับ "
+    "อาจารย์รัชนีเป็นผู้ที่ได้รับทุนวิจัยจากสถาบันนะครับ ซึ่งก็ทำหน้าที่มาโดยตลอด"
+)
+
+
+def test_collapses_a_line_spaced_between_every_token():
+    assert fix(OVERSPACED) == "ทีนี้ว่าพอเราทำงานวิจัยเนี่ยนะครับมันก็ต้องมาดูว่างบ"
+
+
+def test_leaves_a_normally_spaced_line_alone():
+    """Those spaces are phrase breaks and they carry meaning."""
+    assert fix(NORMAL) == NORMAL
+
+
+def test_judges_each_line_on_its_own():
+    fixed = fix(f"{NORMAL}\n{OVERSPACED}\n{NORMAL}")
+    assert fixed.splitlines()[0] == NORMAL
+    assert " " not in fixed.splitlines()[1]
+    assert fixed.splitlines()[2] == NORMAL
+
+
+def test_too_few_fragments_to_judge_means_no_collapse():
+    assert fix("นะ ครับ ก็ เป็น") == "นะ ครับ ก็ เป็น"
+
+
+def test_collapsing_keeps_numbers_spaced_off():
+    text = "เป็น จ้าง เหมา หมดเลย 5 รายการ จ้าง เหมา หมดเลย ก็ เป็น ก็คง จะ"
+    assert fix(text) == "เป็นจ้างเหมาหมดเลย 5 รายการจ้างเหมาหมดเลยก็เป็นก็คงจะ"
+
+
+def test_collapsing_keeps_double_spaces():
+    text = "ทีนี้ ว่า พอเรา ทำงาน  วิจัย เนี่ย นะ ครับ มันก็ ต้องมา ดูว่า งบ"
+    assert fix(text) == "ทีนี้ว่าพอเราทำงาน  วิจัยเนี่ยนะครับมันก็ต้องมาดูว่างบ"
+
+
+def test_collapse_is_reported_and_can_be_switched_off():
+    _, changes = repair_text(OVERSPACED)
+    assert [c.rule for c in changes] == ["collapse"]
+    assert fix(OVERSPACED, do_collapse_spaces=False) == OVERSPACED
 
 
 # --- magnitude words the ITN step left stranded -----------------------------

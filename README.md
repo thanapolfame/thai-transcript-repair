@@ -38,6 +38,8 @@ without losing the output.
 | `--words FILE` | curated `correct,wrong` pairs (default `resource/word.csv`) |
 | `--aggressive` | also repair digits touching Thai on **one** side; will fire on legitimate unspaced text like `45บาท`, so review every hit |
 | `--no-normalize` | skip tone-mark / duplicate-vowel normalization of the input |
+| `--no-join-words` | leave words the ASR split across spaces (`ประสบการ ณ ์`) |
+| `--no-collapse-spaces` | keep the token spacing on lines spaced between every word |
 | `--no-space-numbers` | leave genuine numbers flush against Thai text (`ได้18ท่าน`) |
 
 ## How it works
@@ -63,6 +65,28 @@ rewritten silently.
    and the case is flagged.
 3. **Unresolved** — the digit is glued between Thai letters but no reading
    yields a word. The text is left exactly as-is and reported for review.
+
+After the digit tier come the two space repairs. First, **words split across
+spaces**: this ASR puts a space between nearly every token, and some of those
+splits land mid-word — `ประสบการ ณ ์`, `บริษั ท`, `ขอข ยาย`. The tell is the
+usual one: a split word leaves an orphan behind, a fragment that cannot be read
+as words at all. That is stricter than "not a single word" — `พอเรา` and `ดูว่า`
+are two words run together and nothing about them is broken. Repair grows
+outward from each orphan and takes the best window by three tests in order: a
+real dictionary word beats a merely readable string, then the largest collapse,
+then the smallest reach.
+
+A join must also **reduce** the token count. `กกต` glued to `อย่างนั้นเนี่ย`
+re-segments as กก|ตอ|ย่าง|นั้น|เนี่ย — every piece is a lexicon entry, but it
+shredded `อย่าง`, which was fine before. Without that rule the acronyms in a
+Thai transcript (`กกต`, `อบต`, `กปม`, `สจล`) all get glued to their neighbours.
+
+Second, **over-spaced lines** are closed up into ordinary Thai prose, which runs
+words together and reserves spaces for phrase breaks. A line qualifies when its
+Thai runs average under 7 characters — on a real transcript the two populations
+separate cleanly, over-spaced lines topping out at a mean of 5.7 and ordinary
+lines starting at 13.1. The test is per line, so lines that were already fine
+keep their phrase breaks, and double spaces are never closed anywhere.
 
 Before the digit tier there is one more repair: **stranded magnitude words**.
 The ITN step sometimes converted the tail of a numeral but not its head, leaving

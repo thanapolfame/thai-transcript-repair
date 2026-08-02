@@ -15,6 +15,7 @@ from .lexicon import (
     is_thai_letter,
     oov_count,
     token_span,
+    word_tokens,
 )
 from .numbers import COEFFICIENTS, MAGNITUDES, joined_value, readings
 
@@ -43,6 +44,28 @@ LOOSE_RE = re.compile(
 
 #: Context, in characters, used to judge whether a repair improved segmentation.
 WINDOW_PAD = 40
+
+#: Two or more Thai fragments separated by single spaces.  A double space ends
+#: the run, so genuine phrase separation is never swallowed.
+_PHRASE_RE = re.compile(f"[{THAI_LETTER}]+(?:[ \t][{THAI_LETTER}]+)+")
+
+_FRAGMENT_RE = re.compile(f"[{THAI_LETTER}]+")
+
+#: How many space-separated fragments may be pulled back into one word.
+MAX_JOIN_FRAGMENTS = 4
+
+#: A single space between two Thai letters — the kind the ASR sprinkles between
+#: tokens.  A double space is left alone; that is real phrase separation.
+_INNER_SPACE_RE = re.compile(f"(?<=[{THAI_LETTER}])[ \t](?=[{THAI_LETTER}])")
+
+#: A line whose Thai runs are this short on average was emitted with a space
+#: between nearly every token.  On a real transcript the two populations
+#: separate cleanly: over-spaced lines top out at a mean of 5.7 characters and
+#: ordinary lines start at 13.1, so anything in between is a safe cut.
+OVERSPACED_MEAN_FRAGMENT = 7.0
+
+#: Enough fragments for that mean to carry any weight.
+OVERSPACED_MIN_FRAGMENTS = 8
 
 CONFIDENCES = ("override", "high", "ambiguous", "unresolved")
 
@@ -143,6 +166,137 @@ def _thai_run(text: str, lo: int, hi: int) -> Tuple[int, int]:
     while hi < len(text) and is_thai_letter(text[hi]):
         hi += 1
     return lo, hi
+
+
+def join_split_words(text: str, lexicon: Set[str]) -> Tuple[str, List[Change]]:
+    """Close up spaces the ASR inserted inside a word.
+
+    This output puts a space between nearly every token, and some of those
+    splits land mid-word: ``ประสบการ ณ ์``, ``บริษั ท``, ``ขอข ยาย``.  The tell is
+    the one used everywhere else here — a split word leaves an orphan behind.
+    An orphan is a fragment that cannot be read as words at all, which is a
+    stricter thing than "not a single word": ``พอเรา`` and ``ดูว่า`` are two words
+    run together, perfectly readable, and nothing about them is broken.
+
+    Repair grows outward from each orphan, smallest window first, and stops at
+    the first join that yields something real — a lexicon word, or a string that
+    segments into nothing but known words, which is what rescues ``ขอข ยาย`` ->
+    ``ขอขยาย`` where the space was merely in the wrong place.  Fragments that
+    are already fine are never pulled in, so ``เท็จ จริง`` and ``นะ ครับ`` keep
+    their spacing.
+    """
+    stats: Dict[str, Tuple[bool, int]] = {}
+
+    def analyse(fragment: str) -> Tuple[bool, int]:
+        """Whether ``fragment`` reads as known words, and how many it takes."""
+        if fragment not in stats:
+            tokens = word_tokens(fragment)
+            stats[fragment] = (all(t in lexicon for t in tokens), len(tokens))
+        return stats[fragment]
+
+    def is_readable(fragment: str) -> bool:
+        return analyse(fragment)[0]
+
+    changes: List[Change] = []
+    out = []
+    pos = 0
+
+    for phrase in _PHRASE_RE.finditer(text):
+        body = phrase.group()
+        spans = [m.span() for m in _FRAGMENT_RE.finditer(body)]
+        fragments = [body[a:b] for a, b in spans]
+        separators = [body[spans[j][1] : spans[j + 1][0]] for j in range(len(spans) - 1)]
+        count = len(fragments)
+
+        joins: Dict[int, int] = {}  # start index -> end index of an accepted join
+        taken = [False] * count
+
+        orphaned = [not is_readable(fragment) for fragment in fragments]
+
+        for orphan in range(count):
+            if taken[orphan] or not orphaned[orphan]:
+                continue
+            best = None
+            for size in range(2, MAX_JOIN_FRAGMENTS + 1):
+                for start in range(orphan - size + 1, orphan + 1):
+                    stop = start + size
+                    if start < 0 or stop > count or any(taken[start:stop]):
+                        continue
+                    joined = "".join(fragments[start:stop])
+                    readable, joined_tokens = analyse(joined)
+                    if not (joined in lexicon or readable):
+                        continue
+                    # The join has to mend more than it breaks.  "กกต" glued to
+                    # "อย่างนั้นเนี่ย" re-segments as กก|ตอ|ย่าง|นั้น|เนี่ย — every
+                    # piece is a lexicon entry, but it shredded อย่าง, which was
+                    # fine before.  Real repairs collapse fragments into fewer
+                    # words, never more.
+                    before_tokens = sum(analyse(f)[1] for f in fragments[start:stop])
+                    if joined_tokens >= before_tokens:
+                        continue
+                    # A real dictionary word outranks everything: it is the
+                    # strongest evidence that this exact span was one word.  Raw
+                    # collapse cannot lead, or a wider window would always win by
+                    # merging more — "ได้มี ประสบการ ณ ์" would become one blob
+                    # instead of mending ประสบการณ์ and leaving ได้มี alone.
+                    score = (joined in lexicon, before_tokens - joined_tokens, -size)
+                    if best is None or score > best[0]:
+                        best = (score, start, stop, joined)
+            if best is None:
+                continue
+            _, start, stop, joined = best
+            offset = phrase.start() + spans[start][0]
+            line, col = _line_col(text, offset)
+            original = body[spans[start][0] : spans[stop - 1][1]]
+            changes.append(Change(line, col, original, joined, "high", "join"))
+            joins[start] = stop
+            for index in range(start, stop):
+                taken[index] = True
+
+        parts = []
+        index = 0
+        while index < count:
+            stop = joins.get(index, index + 1)
+            parts.append("".join(fragments[index:stop]))
+            if stop - 1 < len(separators):
+                parts.append(separators[stop - 1])
+            index = stop
+
+        out.append(text[pos : phrase.start()])
+        out.append("".join(parts))
+        pos = phrase.end()
+
+    out.append(text[pos:])
+    return "".join(out), changes
+
+
+def is_overspaced(line: str) -> bool:
+    """True when a line was emitted with a space between nearly every token."""
+    fragments = _FRAGMENT_RE.findall(line)
+    if len(fragments) < OVERSPACED_MIN_FRAGMENTS:
+        return False
+    mean = sum(len(fragment) for fragment in fragments) / len(fragments)
+    return mean < OVERSPACED_MEAN_FRAGMENT
+
+
+def collapse_overspaced_lines(text: str) -> Tuple[str, List[Change]]:
+    """Remove inter-word spaces on lines that have a space between every token.
+
+    Thai prose runs words together and uses spaces to break phrases, so these
+    lines are only readable once the token spacing comes out.  The test is
+    applied per line, which keeps it away from lines that were already fine —
+    their phrase breaks carry meaning and are none of this function's business.
+    """
+    changes: List[Change] = []
+    lines = text.split("\n")
+    for index, line in enumerate(lines):
+        if not is_overspaced(line):
+            continue
+        collapsed = _INNER_SPACE_RE.sub("", line)
+        if collapsed != line:
+            changes.append(Change(index + 1, 1, line, collapsed, "high", "collapse"))
+            lines[index] = collapsed
+    return "\n".join(lines), changes
 
 
 def join_magnitude_words(text: str) -> Tuple[str, List[Change]]:
@@ -329,6 +483,8 @@ def repair_text(
     aggressive: bool = False,
     do_normalize: bool = True,
     do_space_numbers: bool = True,
+    do_join_words: bool = True,
+    do_collapse_spaces: bool = True,
 ) -> Tuple[str, List[Change]]:
     """Repair ``text`` and return the result plus a log of every decision.
 
@@ -358,6 +514,18 @@ def repair_text(
 
     text, digit_changes = _repair_digits(text, lexicon, aggressive)
     changes.extend(digit_changes)
+
+    # After the digit tier, which has its own handling of spaces stranded around
+    # a digit and is calibrated on the original spacing.
+    if do_join_words:
+        text, join_changes = join_split_words(text, lexicon)
+        changes.extend(join_changes)
+
+    # After joining, which is the precise tool: it names the word it mended,
+    # while this only reports that a line was closed up.
+    if do_collapse_spaces:
+        text, collapse_changes = collapse_overspaced_lines(text)
+        changes.extend(collapse_changes)
 
     if do_space_numbers:
         text, spacing_changes = space_numbers(text)

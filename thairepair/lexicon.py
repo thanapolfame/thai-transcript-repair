@@ -131,6 +131,11 @@ def covering_word(
     return best
 
 
+def word_tokens(text: str) -> List[str]:
+    """Segment ``text`` into words, dropping whitespace."""
+    return word_tokenize(text, engine="newmm")
+
+
 def _token_spans(text: str) -> List[Tuple[int, int]]:
     spans = []
     pos = 0
@@ -150,7 +155,7 @@ def oov_count(text: str, lexicon: Set[str]) -> int:
     """
     return sum(
         1
-        for token in word_tokenize(text, engine="newmm")
+        for token in word_tokens(text)
         if _THAI_LETTER_RE.search(token) and token not in lexicon
     )
 

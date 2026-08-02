@@ -40,6 +40,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="skip PyThaiNLP tone-mark/vowel normalization of the input",
     )
     parser.add_argument(
+        "--no-join-words",
+        action="store_true",
+        help="leave words the ASR split across spaces (ประสบการ ณ ์)",
+    )
+    parser.add_argument(
+        "--no-collapse-spaces",
+        action="store_true",
+        help="keep the token spacing on lines that have a space between every word",
+    )
+    parser.add_argument(
         "--no-space-numbers",
         action="store_true",
         help="leave genuine numbers flush against Thai text (ได้18ท่าน)",
@@ -59,6 +69,8 @@ def main(argv=None) -> int:
         aggressive=args.aggressive,
         do_normalize=not args.no_normalize,
         do_space_numbers=not args.no_space_numbers,
+        do_join_words=not args.no_join_words,
+        do_collapse_spaces=not args.no_collapse_spaces,
     )
 
     if args.output:
