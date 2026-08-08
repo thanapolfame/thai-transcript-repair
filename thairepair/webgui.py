@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlparse
 
 from .lexicon import default_lexicon
 from .repair import Change, load_overrides, repair_text, report_csv
+from .spellcheck import Misspelling, find_misspellings, spell_report_csv
 
 PAGE = Path(__file__).with_name("webgui.html")
 DEFAULT_WORDS = Path(__file__).parent.parent / "resource" / "word.csv"
@@ -80,6 +81,15 @@ def repair_upload(raw: bytes, params: Mapping[str, list[str]]) -> dict[str, Any]
     counts: Counter[str] = Counter(
         change.rule if change.applied else "unresolved" for change in changes
     )
+
+    # Off by default: on a long transcript it is the slowest thing here, and it
+    # is a review aid rather than part of the repair.  ``None`` — not an empty
+    # string — is what tells the page there is no third file to offer, so a run
+    # that legitimately finds nothing still downloads a header-only CSV.
+    spell: list[Misspelling] | None = (
+        find_misspellings(fixed) if _flag(params, "spell_check", False) else None
+    )
+
     return {
         "fixed": fixed,
         "report": report_csv(changes),
@@ -87,6 +97,8 @@ def repair_upload(raw: bytes, params: Mapping[str, list[str]]) -> dict[str, Any]
         "lines": text.count("\n") + 1,
         "counts": [{"rule": rule, "n": n} for rule, n in counts.most_common()],
         "unresolved": _unresolved_preview(changes),
+        "spell_report": None if spell is None else spell_report_csv(spell),
+        "spell": [] if spell is None else _spell_preview(spell),
     }
 
 
@@ -96,6 +108,19 @@ def _unresolved_preview(changes: list[Change]) -> list[dict[str, Any]]:
         {"line": change.line, "before": change.before}
         for change in changes
         if not change.applied
+    ][:50]
+
+
+def _spell_preview(found: list[Misspelling]) -> list[dict[str, Any]]:
+    """The unknown words, capped the same way — the CSV is the complete list."""
+    return [
+        {
+            "word": item.word,
+            "count": item.count,
+            "line": item.line,
+            "context": item.context,
+        }
+        for item in found
     ][:50]
 
 

@@ -270,6 +270,9 @@
             class="en">space genuine numbers off Thai text (ได้18ท่าน → ได้ 18 ท่าน)</span></span></label>
       <label class="opt"><input type="checkbox" id="aggressive"><span>ซ่อมตัวเลขที่ติดอักษรไทยเพียงด้านเดียวด้วย<span
             class="en">aggressive — needs review, will fire on 45บาท</span></span></label>
+      <label class="opt"><input type="checkbox" id="spell_check"><span>ออกรายงานคำที่สะกดผิด (ไม่มีในพจนานุกรม)<span
+            class="en">also report words not in the Thai lexicon — an extra CSV, does not change the
+            text</span></span></label>
     </div>
     <br>
 
@@ -303,6 +306,25 @@
         </table>
       </div>
     </section>
+
+    <section id="spell-card" class="card hidden">
+      <h2>คำที่อาจสะกดผิด · possible wrong words</h2>
+      <p class="note" style="margin-top:0">คำที่ไม่มีในพจนานุกรมภาษาไทย เรียงตามจำนวนครั้งที่พบ · ระบบไม่ได้แก้ให้
+        ต้องตรวจสอบเอง</p>
+      <div class="queue">
+        <table>
+          <thead>
+            <tr>
+              <th>คำ</th>
+              <th>จำนวน</th>
+              <th>บรรทัด</th>
+              <th>ข้อความรอบข้าง</th>
+            </tr>
+          </thead>
+          <tbody id="spell"></tbody>
+        </table>
+      </div>
+    </section>
   </main>
 
   <script>
@@ -316,13 +338,14 @@
       spacing: "เว้นวรรคตัวเลข",
       unresolved: "ต้องตรวจสอบ",
     };
-    const OPTIONS = ["normalize", "join_words", "collapse_spaces", "replace", "yamok", "space_numbers", "aggressive"];
+    const OPTIONS = ["normalize", "join_words", "collapse_spaces", "replace", "yamok", "space_numbers", "aggressive", "spell_check"];
 
     const drop = document.getElementById("drop");
     const picker = document.getElementById("file");
     const statusBox = document.getElementById("status");
     const result = document.getElementById("result");
     const queueCard = document.getElementById("queue-card");
+    const spellCard = document.getElementById("spell-card");
     let busy = false;
 
     drop.addEventListener("click", () => { if (!busy) picker.click(); });
@@ -351,6 +374,7 @@
       drop.classList.add("busy");
       result.classList.add("hidden");
       queueCard.classList.add("hidden");
+      spellCard.classList.add("hidden");
       show(statusBox, `กำลังซ่อม <b>${escapeHtml(file.name)}</b> …`);
 
       const params = new URLSearchParams();
@@ -371,12 +395,17 @@
 
     function report(file, data) {
       const stem = file.name.replace(/\.[^.]+$/, "");
-      const fixedName = `${stem}.fixed.txt`;
-      const reportName = `${stem}.report.csv`;
 
       // The BOM is what makes Excel read the CSV as UTF-8 rather than mojibake.
-      const fixedUrl = blobUrl(data.fixed, "text/plain");
-      const reportUrl = blobUrl("﻿" + data.report, "text/csv");
+      // spell_report is null when the checkbox was off — an empty string still
+      // means "checked, nothing found", which is a file worth handing over.
+      const outputs = [
+        [`${stem}.fixed.txt`, blobUrl(data.fixed, "text/plain")],
+        [`${stem}.report.csv`, blobUrl("﻿" + data.report, "text/csv")],
+      ];
+      if (data.spell_report !== null) {
+        outputs.push([`${stem}.spell.csv`, blobUrl("﻿" + data.spell_report, "text/csv")]);
+      }
 
       statusBox.classList.add("hidden");
 
@@ -387,9 +416,9 @@
         ).join("")
         : `<li class="chip">ไม่พบจุดที่ต้องแก้</li>`;
 
-      document.getElementById("files").innerHTML =
-        `<a class="dl" href="${fixedUrl}" download="${escapeHtml(fixedName)}">${escapeHtml(fixedName)}</a>` +
-        `<a class="dl ghost" href="${reportUrl}" download="${escapeHtml(reportName)}">${escapeHtml(reportName)}</a>`;
+      document.getElementById("files").innerHTML = outputs.map(([name, url], i) =>
+        `<a class="dl${i ? " ghost" : ""}" href="${url}" download="${escapeHtml(name)}">${escapeHtml(name)}</a>`
+      ).join("");
       document.getElementById("note").textContent =
         `${escapeHtml(file.name)} · ${data.lines} บรรทัด · อ่านเป็น ${data.encoding} · ` +
         `ถ้าเบราว์เซอร์ไม่ดาวน์โหลดให้อัตโนมัติ ให้กดที่ชื่อไฟล์ด้านบน`;
@@ -403,10 +432,18 @@
         queueCard.classList.remove("hidden");
       }
 
-      save(fixedUrl, fixedName);
+      const spell = document.getElementById("spell");
+      if (data.spell.length) {
+        spell.innerHTML = data.spell.map((row) =>
+          `<tr><td>${escapeHtml(row.word)}</td><td class="line">${row.count}</td>` +
+          `<td class="line">${row.line}</td><td>${escapeHtml(row.context)}</td></tr>`
+        ).join("");
+        spellCard.classList.remove("hidden");
+      }
+
       // Chrome treats two downloads a beat apart as one action; back to back it
       // sometimes drops the second.
-      setTimeout(() => save(reportUrl, reportName), 400);
+      outputs.forEach(([name, url], i) => setTimeout(() => save(url, name), i * 400));
     }
 
     function blobUrl(text, type) {

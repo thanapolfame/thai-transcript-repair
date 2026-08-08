@@ -37,7 +37,8 @@ once. After that it opens a page in the default browser: drag a `.txt`
 transcript onto it and the two outputs, `<name>.fixed.txt` and
 `<name>.report.csv`, download by themselves. Unresolved digits are listed on the
 page as a review queue, and the checkboxes under *ตัวเลือกขั้นสูง* are the CLI
-flags below.
+flags below. Ticking *ออกรายงานคำที่สะกดผิด* adds a third download,
+`<name>.spell.csv`, and a second table on the page.
 
 Input may be UTF-8 or TIS-620/cp874 — whichever Word or Excel produced. The
 report is written with a BOM so Excel opens the Thai correctly. The server binds
@@ -68,6 +69,7 @@ without losing the output.
 | `--no-yamok` | leave a repeated word spelled out instead of folding it to ๆ (`เร็วเร็ว` → `เร็ว ๆ`) |
 | `--no-replace` | skip the curated find-and-replace corpora in `resource/` |
 | `--no-space-numbers` | leave genuine numbers flush against Thai text (`ได้18ท่าน`) |
+| `--spell-report FILE` | additionally write a CSV of words in the output that are not in the Thai lexicon |
 
 ## How it works
 
@@ -234,6 +236,26 @@ with nothing to attach to is not a valid syllable.
 including the `unresolved` non-edits. Line numbers are exact; columns can drift
 a few characters on lines with multiple repairs, since earlier replacements
 change the offsets.
+
+## Wrong-word report
+
+`--spell-report` (the *ออกรายงานคำที่สะกดผิด* checkbox) is off by default and
+changes nothing: it reads the **repaired** text back and writes
+`word,count,line,col,context` for every word the Thai lexicon does not know.
+Where `--report` says what was fixed, this says what was not.
+
+Two things keep it readable. `newmm` segments with the same dictionary we check
+against, so a word it does not know comes back shredded into one- and
+two-character pieces; a maximal run of adjacent unknown tokens is glued back
+together, which recovers the string the ASR actually produced. And identical
+words are one counted row rather than one row per occurrence — a mangled proper
+noun appearing 40 times is a single decision, and that decision is usually a row
+added to `resource/word-replace.csv`, which is applied document-wide anyway.
+
+It is a review aid, not a verdict. A name, a loanword or an acronym the lexicon
+never had will show up here and be perfectly correct; a single-character row is
+normally a fragment of a longer mis-segmented word, which is what the `context`
+column is for. Sort by `count` and start at the top.
 
 ## Adding cases
 

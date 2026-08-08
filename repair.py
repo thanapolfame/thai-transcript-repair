@@ -10,7 +10,14 @@ from collections import Counter
 from collections.abc import Sequence
 from pathlib import Path
 
-from thairepair import Change, load_overrides, repair_text, write_report
+from thairepair import (
+    Change,
+    find_misspellings,
+    load_overrides,
+    repair_text,
+    write_report,
+    write_spell_report,
+)
 
 DEFAULT_WORDS = Path(__file__).parent / "resource" / "word.csv"
 
@@ -27,6 +34,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--report", type=Path, help="write a CSV log of every change and non-change"
+    )
+    parser.add_argument(
+        "--spell-report",
+        type=Path,
+        help="write a CSV of words in the output that are not in the Thai lexicon",
     )
     parser.add_argument(
         "--words",
@@ -80,6 +92,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     input_path: Path = args.input
     output_path: Path | None = args.output
     report_path: Path | None = args.report
+    spell_report_path: Path | None = args.spell_report
     words_path: Path | None = args.words
     aggressive: bool = args.aggressive
     no_normalize: bool = args.no_normalize
@@ -113,6 +126,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if report_path:
         write_report(report_path, changes)
+
+    # Run on the repaired text, not the input: the point is to name what the
+    # repair tiers could not, so the reviewer reads the file they will keep.
+    if spell_report_path:
+        write_spell_report(spell_report_path, find_misspellings(fixed))
 
     print(f"thairepair: {_summarize(changes)}", file=sys.stderr)
     # Unresolved digits are the review queue, not a crash: exit 1 so a pipeline

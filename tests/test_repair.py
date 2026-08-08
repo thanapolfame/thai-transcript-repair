@@ -5,10 +5,13 @@ from typing import Any
 import pytest
 
 from thairepair import (
+    find_misspellings,
     load_overrides,
     load_replacements,
     load_yamok_words,
     repair_text,
+    spell_report_csv,
+    write_spell_report,
 )
 from thairepair.numbers import readings
 from thairepair.repair import apply_replacements
@@ -647,3 +650,59 @@ def test_multi_digit_offers_numeral_and_per_digit_readings() -> None:
     got = list(readings("45"))
     assert got[0] == "สี่สิบห้า"
     assert "สี่ห้า" in got
+
+
+# --- the wrong-word report --------------------------------------------------
+
+
+def test_known_words_produce_no_findings() -> None:
+    assert find_misspellings("ผมไปโรงเรียนทุกวัน") == []
+
+
+def test_an_unknown_word_is_reported_whole() -> None:
+    """The tokenizer shreds a word it does not know; the run is glued back."""
+    found = find_misspellings("เขาชื่อกขคงจฉชและมาสาย")
+    assert [item.word for item in found] == ["กขคงจฉช"]
+
+
+def test_repeats_collapse_to_one_counted_row() -> None:
+    found = find_misspellings("กขคงจฉช\nกขคงจฉช\nกขคงจฉช")
+    assert [(item.word, item.count, item.line) for item in found] == [
+        ("กขคงจฉช", 3, 1)
+    ]
+
+
+def test_findings_are_ordered_by_frequency() -> None:
+    found = find_misspellings("ฟฟฟฟฟฟ\nกขคงจฉช\nกขคงจฉช")
+    assert [item.word for item in found] == ["กขคงจฉช", "ฟฟฟฟฟฟ"]
+
+
+def test_context_is_clipped_to_the_line() -> None:
+    """A window running past the newline would quote the wrong sentence."""
+    found = find_misspellings("กขคงจฉช\nบรรทัดถัดไป")
+    assert "\n" not in found[0].context
+    assert "บรรทัด" not in found[0].context
+
+
+def test_a_bare_repetition_mark_is_not_a_wrong_word() -> None:
+    """ๆ and ฯ sit inside the Thai letter range but say nothing about spelling."""
+    assert find_misspellings("เร็ว ๆ นี้") == []
+
+
+def test_report_has_a_header_even_with_no_findings() -> None:
+    assert spell_report_csv([]).splitlines() == ["word,count,line,col,context"]
+
+
+def test_report_writes_the_same_bytes_it_returns(tmp_path: Path) -> None:
+    found = find_misspellings("กขคงจฉช")
+    path = tmp_path / "spell.csv"
+    write_spell_report(path, found)
+    # Bytes, not read_text: the csv module's \r\n has to survive untranslated.
+    assert path.read_bytes().decode("utf-8") == spell_report_csv(found)
+
+
+def test_the_report_never_edits_the_text() -> None:
+    """It is a report: repair_text is what changes bytes, this only looks."""
+    text = "เขาชื่อกขคงจฉชและมาสาย"
+    find_misspellings(text)
+    assert text == "เขาชื่อกขคงจฉชและมาสาย"
