@@ -72,7 +72,9 @@
       margin-bottom: 1.25rem;
     }
 
-    #drop {
+    /* Both tabs have one of these, so the styling is on the class; the ids are
+       for the JS to find them by. */
+    .drop {
       border: 2px dashed var(--line);
       border-radius: 14px;
       padding: 3rem 1.5rem;
@@ -82,23 +84,23 @@
       background: var(--card);
     }
 
-    #drop:hover,
-    #drop.over {
+    .drop:hover,
+    .drop.over {
       border-color: var(--accent);
       background: var(--accent-soft);
     }
 
-    #drop.busy {
+    .drop.busy {
       cursor: progress;
       opacity: .65;
     }
 
-    #drop .big {
+    .drop .big {
       font-size: 1.15rem;
       font-weight: 600;
     }
 
-    #drop .small {
+    .drop .small {
       color: var(--muted);
       font-size: .9rem;
       margin-top: .4rem;
@@ -243,15 +245,70 @@
     .err {
       color: var(--bad);
     }
+
+    .tabs {
+      display: flex;
+      gap: .25rem;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 1.5rem;
+    }
+
+    .tab {
+      appearance: none;
+      background: none;
+      border: 0;
+      border-bottom: 2px solid transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: .95rem;
+      padding: .6rem 1rem;
+      margin-bottom: -1px;
+    }
+
+    .tab:hover {
+      color: var(--ink);
+    }
+
+    .tab[aria-selected=true] {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      font-weight: 600;
+    }
+
+    button.action {
+      appearance: none;
+      background: var(--accent);
+      border: 0;
+      border-radius: 8px;
+      color: #fff;
+      cursor: pointer;
+      font: inherit;
+      font-size: .95rem;
+      padding: .55rem 1.1rem;
+    }
+
+    button.action:disabled {
+      opacity: .6;
+      cursor: progress;
+    }
   </style>
 </head>
 
 <body>
   <main>
     <h1>ซ่อมไฟล์ถอดเสียงภาษาไทย</h1>
+
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tab-repair" role="tab" aria-selected="true" aria-controls="panel-repair">ซ่อมไฟล์ ·
+        repair</button>
+      <button class="tab" id="tab-convert" role="tab" aria-selected="false" aria-controls="panel-convert">แปลงไฟล์ .md
+        ⇄ .docx · convert</button>
+    </div>
+
+    <section id="panel-repair" role="tabpanel" aria-labelledby="tab-repair">
     <p class="sub">ลากไฟล์ <code>.txt</code> มาวาง แล้วระบบจะดาวน์โหลดไฟล์ผลลัพธ์ให้อัตโนมัติ · drop a transcript, get
       the repaired files back</p>
-
 
     <summary>ตัวเลือกขั้นสูง · advanced options</summary>
     <div class="opts">
@@ -276,7 +333,7 @@
     </div>
     <br>
 
-    <div id="drop" tabindex="0" role="button" aria-label="เลือกไฟล์">
+    <div id="drop" class="drop" tabindex="0" role="button" aria-label="เลือกไฟล์">
       <div class="big">ลากไฟล์มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์</div>
       <div class="small">รับไฟล์ข้อความ .txt (UTF-8 หรือ TIS-620) · ไฟล์ไม่ถูกส่งออกนอกเครื่อง</div>
       <input type="file" id="file" accept=".txt,text/plain">
@@ -325,6 +382,35 @@
         </table>
       </div>
     </section>
+    </section>
+
+    <section id="panel-convert" class="hidden" role="tabpanel" aria-labelledby="tab-convert">
+      <p class="sub">แปลงไฟล์ Markdown เป็น Word และกลับกัน · convert between Markdown and Word,
+        both directions</p>
+
+      <div id="pandoc-missing" class="card hidden">
+        <h2>ต้องติดตั้ง pandoc ก่อน · pandoc is needed</h2>
+        <p class="note" style="margin-top:0">การแปลงไฟล์ใช้โปรแกรม <b>pandoc</b> ซึ่งยังไม่มีในเครื่องนี้
+          กดปุ่มด้านล่างเพื่อดาวน์โหลดรุ่นที่ตรงกับเครื่องนี้ (ประมาณ 40 MB) ติดตั้งครั้งเดียว ใช้ได้ตลอด ·
+          conversion needs pandoc; this downloads the build for this machine, once.</p>
+        <p><button class="action" id="install">ดาวน์โหลดและติดตั้ง pandoc</button></p>
+        <p class="note hidden" id="install-status"></p>
+      </div>
+
+      <div id="cdrop" class="drop" tabindex="0" role="button" aria-label="เลือกไฟล์ที่จะแปลง">
+        <div class="big">ลากไฟล์ .md หรือ .docx มาวางที่นี่ หรือคลิกเพื่อเลือกไฟล์</div>
+        <div class="small">.md → .docx และ .docx → .md · ไฟล์ไม่ถูกส่งออกนอกเครื่อง</div>
+        <input type="file" id="cfile" accept=".md,.markdown,.docx">
+      </div>
+
+      <div id="cstatus" class="card hidden"></div>
+
+      <section id="cresult" class="card hidden">
+        <h2>ไฟล์ผลลัพธ์ · output file</h2>
+        <div class="files" id="cfiles"></div>
+        <p class="note" id="cnote"></p>
+      </section>
+    </section>
   </main>
 
   <script>
@@ -348,24 +434,30 @@
     const spellCard = document.getElementById("spell-card");
     let busy = false;
 
-    drop.addEventListener("click", () => { if (!busy) picker.click(); });
-    drop.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!busy) picker.click(); }
-    });
-    picker.addEventListener("change", () => {
-      if (picker.files.length) run(picker.files[0]);
-      picker.value = "";          // so the same file can be re-dropped
-    });
-    for (const type of ["dragenter", "dragover"]) {
-      drop.addEventListener(type, (e) => { e.preventDefault(); drop.classList.add("over"); });
+    // Both tabs take a file the same three ways — click, keyboard, drag — so the
+    // wiring is written once and handed the function that does the work.
+    function dropZone(zone, input, handler) {
+      zone.addEventListener("click", () => { if (!busy) input.click(); });
+      zone.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); if (!busy) input.click(); }
+      });
+      input.addEventListener("change", () => {
+        if (input.files.length) handler(input.files[0]);
+        input.value = "";          // so the same file can be re-dropped
+      });
+      for (const type of ["dragenter", "dragover"]) {
+        zone.addEventListener(type, (e) => { e.preventDefault(); zone.classList.add("over"); });
+      }
+      for (const type of ["dragleave", "drop"]) {
+        zone.addEventListener(type, () => zone.classList.remove("over"));
+      }
+      zone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        if (!busy && e.dataTransfer.files.length) handler(e.dataTransfer.files[0]);
+      });
     }
-    for (const type of ["dragleave", "drop"]) {
-      drop.addEventListener(type, () => drop.classList.remove("over"));
-    }
-    drop.addEventListener("drop", (e) => {
-      e.preventDefault();
-      if (!busy && e.dataTransfer.files.length) run(e.dataTransfer.files[0]);
-    });
+
+    dropZone(drop, picker, run);
 
     function show(box, html) { box.innerHTML = html; box.classList.remove("hidden"); }
 
@@ -445,6 +537,107 @@
       // sometimes drops the second.
       outputs.forEach(([name, url], i) => setTimeout(() => save(url, name), i * 400));
     }
+
+    // ---- tabs -------------------------------------------------------------
+
+    const TABS = [["tab-repair", "panel-repair"], ["tab-convert", "panel-convert"]];
+
+    for (const [tabId, panelId] of TABS) {
+      document.getElementById(tabId).addEventListener("click", () => {
+        if (busy) return;
+        for (const [otherTab, otherPanel] of TABS) {
+          const active = otherTab === tabId;
+          document.getElementById(otherTab).setAttribute("aria-selected", String(active));
+          document.getElementById(otherPanel).classList.toggle("hidden", !active);
+        }
+        if (panelId === "panel-convert") checkPandoc();
+      });
+    }
+
+    // ---- the converter ----------------------------------------------------
+
+    const cdrop = document.getElementById("cdrop");
+    const cstatus = document.getElementById("cstatus");
+    const cresult = document.getElementById("cresult");
+    const missing = document.getElementById("pandoc-missing");
+    const installButton = document.getElementById("install");
+    const installStatus = document.getElementById("install-status");
+    let pandocReady = null;       // null until asked, then true/false
+
+    dropZone(cdrop, document.getElementById("cfile"), convert);
+
+    // Asked at load, not on the first click: the drop zone is live as soon as
+    // the panel is, and a file dropped before the answer arrived would fail
+    // with a pandoc error instead of the install button.
+    cdrop.classList.add("hidden");
+    checkPandoc();
+
+    async function checkPandoc() {
+      const data = await (await fetch("/capabilities")).json();
+      pandocReady = data.pandoc;
+      missing.classList.toggle("hidden", data.pandoc);
+      cdrop.classList.toggle("hidden", !data.pandoc);
+      if (!data.pandoc && !data.installable) {
+        // No release archive is published for this machine, so the button would
+        // only fail; the instruction is all there is to offer.
+        installButton.classList.add("hidden");
+        show(installStatus, `ต้องติดตั้ง pandoc เองจาก <a href="https://pandoc.org/installing.html">pandoc.org</a>`);
+      }
+    }
+
+    installButton.addEventListener("click", async () => {
+      installButton.disabled = true;
+      show(installStatus, "กำลังดาวน์โหลด… อาจใช้เวลาสักครู่ (downloading, this takes a minute)");
+      try {
+        const response = await fetch("/pandoc/install", { method: "POST" });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "ติดตั้งไม่สำเร็จ");
+        show(installStatus, `ติดตั้ง pandoc ${escapeHtml(data.version || "")} เรียบร้อย`);
+        await checkPandoc();
+      } catch (err) {
+        show(installStatus, `<span class="err">ไม่สำเร็จ: ${escapeHtml(err.message)}</span>`);
+      } finally {
+        installButton.disabled = false;
+      }
+    });
+
+    async function convert(file) {
+      if (pandocReady === false) return;
+      busy = true;
+      cdrop.classList.add("busy");
+      cresult.classList.add("hidden");
+      show(cstatus, `กำลังแปลง <b>${escapeHtml(file.name)}</b> …`);
+
+      try {
+        const response = await fetch("/convert?name=" + encodeURIComponent(file.name),
+          { method: "POST", body: file });
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || "เกิดข้อผิดพลาด");
+        }
+        // The body is the converted file; what the page needs to say about it
+        // rides along in the headers.
+        const name = decodeURIComponent(response.headers.get("X-Thairepair-Filename") || file.name);
+        const dropped = response.headers.get("X-Thairepair-Media") === "1";
+        const url = URL.createObjectURL(await response.blob());
+
+        cstatus.classList.add("hidden");
+        document.getElementById("cfiles").innerHTML =
+          `<a class="dl" href="${url}" download="${escapeHtml(name)}">${escapeHtml(name)}</a>`;
+        document.getElementById("cnote").innerHTML =
+          `${escapeHtml(file.name)} → ${escapeHtml(name)} · ถ้าเบราว์เซอร์ไม่ดาวน์โหลดให้อัตโนมัติ ให้กดที่ชื่อไฟล์ด้านบน` +
+          (dropped ? `<br><span class="err">รูปภาพในเอกสารถูกตัดออก · images were dropped</span>` : "");
+        cresult.classList.remove("hidden");
+        save(url, name);
+      } catch (err) {
+        show(cstatus, `<span class="err">ไม่สำเร็จ: ${escapeHtml(err.message)}</span>`);
+      } finally {
+        busy = false;
+        cdrop.classList.remove("busy");
+      }
+    }
+
+    // ---- shared helpers ---------------------------------------------------
 
     function blobUrl(text, type) {
       return URL.createObjectURL(new Blob([text], { type: `${type};charset=utf-8` }));

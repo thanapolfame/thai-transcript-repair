@@ -1,6 +1,6 @@
 [tool.mypy]
 python_version = "3.13"
-files = ["repair.py", "gui.py", "thairepair", "tests"]
+files = ["repair.py", "gui.py", "convert.py", "thairepair", "tests"]
 
 # Strict is the project standard: every function annotated, no implicit Any,
 # no untyped calls.  A new module inherits it by existing.

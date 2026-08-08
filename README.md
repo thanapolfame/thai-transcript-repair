@@ -46,6 +46,19 @@ to `127.0.0.1` and holds the file in memory only; nothing leaves the machine and
 nothing is written to disk except the browser's own downloads. Close the
 terminal window it opened to stop it.
 
+The second tab, *แปลงไฟล์ .md ⇄ .docx*, converts between Markdown and Word in
+either direction — drop a `.md` and a `.docx` downloads, drop a `.docx` and a
+`.md` does. It is a converter only: transcripts still belong on the repair tab,
+and dropping a `.txt` here says so rather than guessing.
+
+That tab needs [pandoc](https://pandoc.org), which is a program rather than a
+Python package and so is not installed with the rest. The first visit offers a
+button that downloads the build for this machine into `~/.thairepair/pandoc` —
+about 40 MB, once, no administrator rights, and nothing outside that folder is
+touched. A `pandoc` already on `PATH` is used in preference to it. Images in a
+Word document are dropped on the way to Markdown, and the page says so when it
+happens.
+
 ## Usage — the command line
 
 Python 3.13 or newer.
@@ -70,6 +83,21 @@ without losing the output.
 | `--no-replace` | skip the curated find-and-replace corpora in `resource/` |
 | `--no-space-numbers` | leave genuine numbers flush against Thai text (`ได้18ท่าน`) |
 | `--spell-report FILE` | additionally write a CSV of words in the output that are not in the Thai lexicon |
+
+### Converting to and from Word
+
+`convert.py` is the converter tab on the command line. The input's extension is
+the direction; there is nothing else it could mean.
+
+```bash
+.venv/bin/python convert.py --install-pandoc   # once per machine
+.venv/bin/python convert.py notes.md           # -> notes.docx
+.venv/bin/python convert.py report.docx        # -> report.md
+.venv/bin/python convert.py notes.md -o out.docx
+```
+
+Exit status is `3` when pandoc is missing and `2` when the file is neither `.md`
+nor `.docx`, so a batch job can tell a setup problem from a bad input.
 
 ## How it works
 

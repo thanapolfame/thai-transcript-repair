@@ -76,6 +76,22 @@ together.
 dependencies — the browser is the toolkit, and "download" is the only way the
 outputs reach disk.
 
+The page has a second tab, the `.md ⇄ .docx` converter, and it holds that line:
+`requirements.txt` is unchanged, because pandoc is a binary rather than a Python
+package. `thairepair/pandoc.py` finds it or downloads the archive built for this
+machine into `~/.thairepair/pandoc`, and `thairepair/convert.py` pipes documents
+through it — stdin in, stdout out, binary included, so a conversion never
+becomes a file on disk either. Two rules there are load-bearing:
+
+- **A pandoc that exists is not a pandoc that runs.** `pypandoc-binary`'s
+  `macosx_11_0_arm64` wheel ships an x86_64 executable, which is why the search
+  in `pandoc.py` executes a candidate before believing in it. That is also why
+  the dependency was dropped in favour of pandoc's own release archives.
+- **The download is never automatic.** `install()` is reached only from the
+  page's button or `convert.py --install-pandoc`; fetching 40 MB is the user's
+  decision. Everything else degrades to "the tab says pandoc is missing", and
+  the repair path never imports either module.
+
 Two things to keep in mind when changing it:
 
 - **The page is outside the type gate.** `webgui.html` is HTML and JavaScript,
@@ -85,6 +101,8 @@ Two things to keep in mind when changing it:
   `repair.py`, a `_flag(...)` read in `repair_upload()`, and a checkbox whose
   `id` matches the query-string key plus an entry in the page's `OPTIONS` list.
   The `id` *is* the wire format; a typo silently falls back to the default.
+  This applies to the repair tab only — the converter has no options, and
+  nothing about it belongs in `OPTIONS`.
 
 `report_csv()` is the report as a string and `write_report()` is a thin wrapper
 over it — the GUI needs the text, the CLI needs the file, and both must produce
